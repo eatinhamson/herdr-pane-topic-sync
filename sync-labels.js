@@ -38,8 +38,6 @@ const DEFAULTS = {
   max_words: 0,            // keep only the first N words of a topic (0 = no limit)
   tab_format: "{topic}",   // tokens: {topic} {agent} {n} {workspace}
   pane_format: "{topic}",  // tokens: {topic} {agent} {workspace}
-  wrap_tokens: true,       // publish $topic1/$topic2 so the sidebar can show a topic on two lines
-  wrap_width: 32,          // characters per wrapped line (sidebar_width minus the state icon)
 };
 
 // Minimal flat-TOML reader: key = value, one per line. Values may be quoted
@@ -94,9 +92,6 @@ function loadConfig() {
   cfg.max_words = Number.isFinite(mw) && mw > 0 ? mw : 0;
   if (typeof cfg.tab_format !== "string" || !cfg.tab_format) cfg.tab_format = DEFAULTS.tab_format;
   if (typeof cfg.pane_format !== "string" || !cfg.pane_format) cfg.pane_format = DEFAULTS.pane_format;
-  cfg.wrap_tokens = cfg.wrap_tokens !== false;
-  const ww = parseInt(cfg.wrap_width, 10);
-  cfg.wrap_width = Number.isFinite(ww) && ww > 0 ? ww : DEFAULTS.wrap_width;
   return cfg;
 }
 
@@ -182,28 +177,6 @@ function grokSessionTitle(pane) {
 }
 
 // ---------------------------------------------------------------------------
-// Wrapped sidebar tokens
-//
-// herdr truncates each sidebar row to the sidebar width -- there is no wrap
-// setting. Custom $tokens reported through pane metadata are just more rows,
-// so publishing the topic pre-split into $topic1/$topic2 gives a two-line
-// label. Anything past two lines still has to be cut.
-// ---------------------------------------------------------------------------
-
-function wrapTwo(topic, width) {
-  const text = String(topic || "").trim();
-  if (text.length <= width) return [text, ""];
-  const words = text.split(/\s+/);
-  let first = "";
-  while (words.length && `${first} ${words[0]}`.trim().length <= width) {
-    first = `${first} ${words.shift()}`.trim();
-  }
-  // A single word longer than the line has to be split mid-word.
-  if (!first) return [text.slice(0, width), cap(text.slice(width), width)];
-  return [first, cap(words.join(" "), width)];
-}
-
-// ---------------------------------------------------------------------------
 // codex topics
 //
 // codex sets its terminal title to the cwd, so every codex pane in one repo
@@ -222,7 +195,6 @@ const codexCachePath = join(stateDir, "codex-titles.json");
 const CODEX_HOME = process.env.CODEX_HOME || join(homedir(), ".codex");
 const CODEX_PROMPT_WORDS = 10; // first-prompt fallback only; summary slugs are already short
 const CODEX_PROMPT_CHARS = 48; // a pasted path is one "word", so cap characters too
-const WRAP_SOURCE = "plugin:dan.pane-topic-sync";
 
 function readJson(path, fallback) {
   try { return JSON.parse(readFileSync(path, "utf8")); } catch { return fallback; }
@@ -418,7 +390,6 @@ function main() {
 
   let paneWrites = 0;
   let tabWrites = 0;
-  let tokenWrites = 0;
   const state = loadState();
   const nextPanes = {};
 
@@ -436,18 +407,6 @@ function main() {
       if (write) {
         run(["pane", "rename", p.pane_id, label]);
         paneWrites++;
-      }
-      if (cfg.wrap_tokens) {
-        const wrap = wrapTwo(meta.topic, cfg.wrap_width);
-        const prev = state.panes[p.pane_id]?.wrap;
-        if (!prev || prev[0] !== wrap[0] || prev[1] !== wrap[1]) {
-          run([
-            "pane", "report-metadata", p.pane_id, "--source", WRAP_SOURCE,
-            "--token", `topic1=${wrap[0]}`, "--token", `topic2=${wrap[1]}`,
-          ]);
-          tokenWrites++;
-        }
-        nextPanes[p.pane_id].wrap = wrap;
       }
     }
   } else {
@@ -508,8 +467,7 @@ function main() {
 
   saveState({ panes: nextPanes, tabs: nextTabs });
   console.log(
-    `synced: ${paneWrites} pane rename(s), ${tabWrites} tab rename(s), ` +
-    `${tokenWrites} wrap token(s) ` +
+    `synced: ${paneWrites} pane rename(s), ${tabWrites} tab rename(s) ` +
     `[panes=${cfg.sync_panes} tabs=${cfg.sync_tabs} source=${cfg.tab_source}]`,
   );
 }
