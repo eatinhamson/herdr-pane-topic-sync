@@ -18,8 +18,13 @@ sync_tabs  = true
 tab_source = "first"
 
 # Truncate labels longer than this (an ellipsis is appended). Applied AFTER
-# formatting, so it caps the final label including any prefix.
+# formatting, so it caps the final label including any prefix. 0 = no limit.
 max_label_length = 60
+
+# Per-surface overrides for the cap above. Unset = use max_label_length;
+# 0 = no limit for that surface.
+# max_pane_label_length = 30
+# max_tab_label_length  = 0
 
 # Label templates. Tokens are substituted; unknown tokens are left literal.
 #   {topic}     the agent's live topic (terminal_title_stripped)

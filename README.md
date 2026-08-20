@@ -6,9 +6,10 @@ what each agent is actually working on — no more tabs labeled `1`, `2`, `3`.
 On every relevant herdr event it:
 
 1. **Renames each agent pane** to its live topic — the `terminal_title_stripped`
-   that Claude Code (and other agents) emit via the terminal title. With
-   `show_agent_labels_on_pane_borders = true` in your herdr config, that topic
-   shows right on the pane border.
+   that Claude Code (and other agents) emit via the terminal title. Grok's OSC
+   title stays `grok`, so a Grok pane falls back to `generated_title` in that
+   session's `summary.json`. With `show_agent_labels_on_pane_borders = true` in
+   your herdr config, that topic shows right on the pane border.
 2. **Renames each tab** to the topic of its **first pane** (top-left, reading
    order). If the first pane is a plain shell, the first *agent* pane's topic is
    used instead, so a tab is never named after a shell prompt.
@@ -65,20 +66,26 @@ documented set. Summary:
 | `sync_panes` | `true` | Rename agent panes to their topic. |
 | `sync_tabs` | `true` | Rename tabs. |
 | `tab_source` | `"first"` | Which pane names a multi-pane tab: `"first"` (top-left) or `"active"` (the pane you last focused *within that tab* — herdr tracks this per tab). |
-| `max_label_length` | `60` | Truncate longer labels (applied after formatting). |
+| `max_label_length` | `60` | Truncate longer labels (applied after formatting). `0` = no limit. |
+| `max_pane_label_length` | `max_label_length` | Pane-only cap. `0` = no limit. |
+| `max_tab_label_length` | `max_label_length` | Tab-only cap. `0` = no limit. |
 | `tab_format` | `"{topic}"` | Template; tokens `{topic}` `{agent}` `{workspace}` `{n}` (tab switch number). |
 | `pane_format` | `"{topic}"` | Template; tokens `{topic}` `{agent}` `{workspace}`. |
 
 Examples: `tab_format = "{n}· {topic}"` keeps the tab switch number;
 `pane_format = "{agent}: {topic}"` prefixes the agent name.
 
-### A note on manual renames
+### Manual renames
 
-The plugin auto-clobbers tab names on the next event, because herdr exposes no
-provenance for a label (it can't tell a human-set name from a plugin-set one).
-If you need a tab to keep a fixed name, either set `sync_tabs = false`, or open
-an issue — a `pin_prefix` opt-out (skip labels starting with a chosen char) is
-the clean way to support this without unreliable heuristics.
+Hand-rename a pane or tab (`herdr pane rename` / `herdr tab rename`, or the
+UI) and the plugin leaves it alone from then on — it tracks the label it last
+wrote per pane/tab in its state file, so a live label that no longer matches
+what it wrote is recognized as a human edit and pinned, instead of being
+clobbered on the next topic change. Anything you haven't touched keeps
+auto-refreshing as usual. There's no unpin command yet; to hand a pinned
+pane/tab back to auto-sync, delete its entry from
+`$HERDR_PLUGIN_STATE_DIR/pane-topic-sync-state.json` (its `panes`/`tabs`
+maps).
 
 ## License
 

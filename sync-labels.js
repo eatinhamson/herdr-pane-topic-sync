@@ -7,12 +7,16 @@
 //   2. rename each tab to the topic of a chosen pane (see `tab_source`)
 //
 // Plain (non-agent) shell panes are ignored so a tab never gets named after a
-// shell prompt. Pane writes are gated through a state file so we only call
+// shell prompt. Writes are gated through a state file so we only call
 // `rename` when a label actually changed -- no churn, and (combined with not
-// subscribing to *.renamed events) no feedback loop.
+// subscribing to *.renamed events) no feedback loop. The state file also
+// tracks the last label WE wrote per pane/tab, so a hand-typed rename (live
+// label != what we last wrote) is detected and left alone from then on,
+// instead of being clobbered on the next topic change.
 
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 const herdr = process.env.HERDR_BIN_PATH || "herdr";
@@ -28,7 +32,10 @@ const DEFAULTS = {
   sync_panes: true,        // rename agent panes to their topic
   sync_tabs: true,         // rename tabs to a pane's topic
   tab_source: "first",     // "first" (top-left) | "active" (tab's focused pane)
-  max_label_length: 60,    // truncate longer labels with an ellipsis
+  max_label_length: 60,    // truncate longer labels with an ellipsis (0 = no limit)
+  max_pane_label_length: null, // pane-only override (0 = no limit; null = use max_label_length)
+  max_tab_label_length: null,  // tab-only override (0 = no limit; null = use max_label_length)
+  max_words: 0,            // keep only the first N words of a topic (0 = no limit)
   tab_format: "{topic}",   // tokens: {topic} {agent} {n} {workspace}
   pane_format: "{topic}",  // tokens: {topic} {agent} {workspace}
 };
@@ -75,7 +82,14 @@ function loadConfig() {
   cfg.sync_tabs = cfg.sync_tabs !== false;
   if (cfg.tab_source !== "active") cfg.tab_source = "first";
   const n = parseInt(cfg.max_label_length, 10);
-  cfg.max_label_length = Number.isFinite(n) && n > 0 ? n : DEFAULTS.max_label_length;
+  cfg.max_label_length = Number.isFinite(n) && n >= 0 ? n : DEFAULTS.max_label_length;
+  // Per-surface caps fall back to max_label_length when unset.
+  for (const key of ["max_pane_label_length", "max_tab_label_length"]) {
+    const v = parseInt(cfg[key], 10);
+    cfg[key] = Number.isFinite(v) && v >= 0 ? v : cfg.max_label_length;
+  }
+  const mw = parseInt(cfg.max_words, 10);
+  cfg.max_words = Number.isFinite(mw) && mw > 0 ? mw : 0;
   if (typeof cfg.tab_format !== "string" || !cfg.tab_format) cfg.tab_format = DEFAULTS.tab_format;
   if (typeof cfg.pane_format !== "string" || !cfg.pane_format) cfg.pane_format = DEFAULTS.pane_format;
   return cfg;
@@ -114,8 +128,60 @@ function normalize(value) {
     .trim();
 }
 
+// Truncate to `max` chars with an ellipsis (0 = no limit).
 function cap(str, max) {
-  return str.length > max ? `${str.slice(0, max - 1).trimEnd()}…` : str;
+  if (!max || str.length <= max) return str;
+  return `${str.slice(0, max - 1).trimEnd()}…`;
+}
+
+// Keep only the first `n` words of a topic (0 = no limit).
+function limitWords(str, n) {
+  if (!n) return str;
+  const w = str.split(" ");
+  return w.length <= n ? str : `${w.slice(0, n).join(" ")}…`;
+}
+
+// "grok" / "claude" is the agent name, not a topic. Grok's OSC title stays
+// at that name even after it writes generated_title to summary.json.
+function isGenericTopic(topic, agent) {
+  const t = String(topic || "").trim().toLowerCase();
+  if (!t) return true;
+  const a = String(agent || "").trim().toLowerCase();
+  return t === a || t === `${a}-build`;
+}
+
+function grokSessionTitle(pane) {
+  const sid = pane.agent_session?.value;
+  if (!sid || typeof sid !== "string") return "";
+  const root = join(process.env.GROK_HOME || join(homedir(), ".grok"), "sessions");
+  let entries;
+  try {
+    entries = readdirSync(root, { withFileTypes: true });
+  } catch {
+    return "";
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const path = join(root, entry.name, sid, "summary.json");
+    if (!existsSync(path)) continue;
+    try {
+      const summary = JSON.parse(readFileSync(path, "utf8"));
+      return String(summary.generated_title || summary.session_summary || "")
+        .replace(/\s+-\s+grok$/i, "")
+        .trim();
+    } catch {
+      return "";
+    }
+  }
+  return "";
+}
+
+function topicFor(pane, cfg) {
+  let topic = limitWords(normalize(pane.terminal_title_stripped), cfg.max_words);
+  if (isGenericTopic(topic, pane.agent) && String(pane.agent).toLowerCase() === "grok") {
+    topic = limitWords(normalize(grokSessionTitle(pane)), cfg.max_words);
+  }
+  return isGenericTopic(topic, pane.agent) ? "" : topic;
 }
 
 // Replace {token}s from `tokens`; unknown tokens are left literal.
@@ -124,21 +190,59 @@ function applyFormat(fmt, tokens) {
 }
 
 // ---------------------------------------------------------------------------
-// State (pane labels only -- `pane list` omits the label field)
+// State -- tracks, per pane/tab, the label WE last wrote and whether it's
+// currently pinned (a human renamed it out from under us). Old state files
+// stored a bare string (no pin tracking); normalizeEntry migrates those in
+// place as "not pinned".
 // ---------------------------------------------------------------------------
+
+function normalizeEntry(v) {
+  if (v === undefined) return undefined;
+  return typeof v === "string" ? { label: v, pinned: false } : v;
+}
 
 function loadState() {
   try {
     const s = JSON.parse(readFileSync(statePath, "utf8"));
-    return { panes: s.panes || {} };
+    return { panes: s.panes || {}, tabs: s.tabs || {} };
   } catch {
-    return { panes: {} };
+    return { panes: {}, tabs: {} };
   }
 }
 
 function saveState(state) {
   mkdirSync(dirname(statePath), { recursive: true });
   writeFileSync(statePath, `${JSON.stringify(state, null, 2)}\n`);
+}
+
+// Decide whether to (re)write a label, given the state entry we last saved
+// (undefined if never seen), the live label right now, and what we'd
+// compute now. Returns { label, pinned, write }, the new state entry plus
+// whether a rename call is needed.
+//
+// A pin sticks until the human touches the label again AND retypes it back
+// to exactly what we'd currently auto-set -- that's treated as "put it back
+// on auto" (see README). Otherwise `wanted` almost always differs from a
+// hand-typed name, so comparing against `wanted` every tick would revert
+// the pin on the very next sync -- comparing against the pinned label
+// itself is what makes the pin durable.
+export function decide(prevEntry, live, wanted) {
+  const prev = normalizeEntry(prevEntry);
+
+  if (prev === undefined) {
+    if (!live) return { label: wanted, pinned: false, write: true };
+    return { label: live, pinned: true, write: false }; // unknown provenance -> don't clobber
+  }
+
+  if (prev.pinned) {
+    if (live === prev.label) return { label: prev.label, pinned: true, write: false };
+    if (live === wanted) return { label: wanted, pinned: false, write: false }; // retyped to match auto -> unpin
+    return { label: live, pinned: true, write: false }; // renamed again -> stay pinned, new value
+  }
+
+  if (live !== prev.label) return { label: live, pinned: true, write: false }; // renamed by hand -> pin
+  if (wanted !== live) return { label: wanted, pinned: false, write: true };
+  return { label: prev.label, pinned: false, write: false };
 }
 
 // ---------------------------------------------------------------------------
@@ -154,7 +258,7 @@ function main() {
   const info = new Map();
   for (const p of panes) {
     if (!p.agent) continue;
-    const topic = normalize(p.terminal_title_stripped);
+    const topic = topicFor(p, cfg);
     if (topic) info.set(p.pane_id, { topic, agent: p.agent });
   }
 
@@ -188,12 +292,13 @@ function main() {
     for (const p of panes) {
       const meta = info.get(p.pane_id);
       if (!meta) continue;
-      const label = cap(
+      const wanted = cap(
         applyFormat(cfg.pane_format, { topic: meta.topic, agent: meta.agent, workspace: wsLabel(p.workspace_id) }),
-        cfg.max_label_length,
+        cfg.max_pane_label_length,
       );
-      nextPanes[p.pane_id] = label;
-      if (state.panes[p.pane_id] !== label) {
+      const { label, pinned, write } = decide(state.panes[p.pane_id], p.label, wanted);
+      nextPanes[p.pane_id] = { label, pinned };
+      if (write) {
         run(["pane", "rename", p.pane_id, label]);
         paneWrites++;
       }
@@ -212,6 +317,7 @@ function main() {
     orderInWs.set(t.tab_id, c);
   }
 
+  const nextTabs = {};
   if (cfg.sync_tabs) {
     const tabLabel = new Map(tabs.map((t) => [t.tab_id, t.label]));
     for (const [tabId, tabPanes] of byTab) {
@@ -225,23 +331,35 @@ function main() {
       }
       if (!meta) continue;
       const wsId = tabPanes[0].workspace_id;
-      const label = cap(
+      const wanted = cap(
         applyFormat(cfg.tab_format, {
           topic: meta.topic,
           agent: meta.agent,
           n: orderInWs.get(tabId) ?? "",
           workspace: wsLabel(wsId),
         }),
-        cfg.max_label_length,
+        cfg.max_tab_label_length,
       );
-      if (tabLabel.get(tabId) !== label) {
+      // herdr labels a fresh tab with its 1-based position ("5"); that is a
+      // default, not a hand-typed name, so decide() must not pin it.
+      const liveTab = tabLabel.get(tabId);
+      const isDefault = liveTab === String(orderInWs.get(tabId));
+      const { label, pinned, write } = decide(
+        isDefault ? undefined : state.tabs[tabId],
+        isDefault ? "" : liveTab,
+        wanted,
+      );
+      nextTabs[tabId] = { label, pinned };
+      if (write) {
         run(["tab", "rename", tabId, label]);
         tabWrites++;
       }
     }
+  } else {
+    Object.assign(nextTabs, state.tabs);
   }
 
-  saveState({ panes: nextPanes });
+  saveState({ panes: nextPanes, tabs: nextTabs });
   console.log(
     `synced: ${paneWrites} pane rename(s), ${tabWrites} tab rename(s) ` +
     `[panes=${cfg.sync_panes} tabs=${cfg.sync_tabs} source=${cfg.tab_source}]`,
@@ -261,9 +379,11 @@ function sourcePaneId(tabPanes, source) {
   return sorted[0].pane_id;
 }
 
-try {
-  main();
-} catch (err) {
-  console.error(err instanceof Error ? err.message : String(err));
-  process.exit(1);
+if (import.meta.main) {
+  try {
+    main();
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
 }
