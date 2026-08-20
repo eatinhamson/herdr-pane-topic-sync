@@ -176,10 +176,116 @@ function grokSessionTitle(pane) {
   return "";
 }
 
+// ---------------------------------------------------------------------------
+// codex topics
+//
+// codex sets its terminal title to the cwd, so every codex pane in one repo
+// reports the same generic name ("Vault Keeper"). Derive a real topic from the
+// session id herdr already exposes: the rollout summary's filename slug once
+// one has been written, else the first real user prompt in the rollout.
+//
+// Cached per session id -- a session's topic is fixed for its lifetime, and the
+// alternative is rescanning ~100 summaries plus a multi-MB rollout on every
+// focus event.
+// ponytail: cache never expires, so a summary written after we fell back to the
+// first prompt is not picked up until codex-titles.json is deleted.
+// ---------------------------------------------------------------------------
+
+const codexCachePath = join(stateDir, "codex-titles.json");
+const CODEX_HOME = process.env.CODEX_HOME || join(homedir(), ".codex");
+const CODEX_PROMPT_WORDS = 10; // first-prompt fallback only; summary slugs are already short
+const CODEX_PROMPT_CHARS = 48; // a pasted path is one "word", so cap characters too
+
+function readJson(path, fallback) {
+  try { return JSON.parse(readFileSync(path, "utf8")); } catch { return fallback; }
+}
+
+// Newest first, so a session with several summaries yields the latest one.
+function codexSummarySlug(sid) {
+  const dir = join(CODEX_HOME, "memories", "rollout_summaries");
+  let names;
+  try { names = readdirSync(dir).filter((n) => n.endsWith(".md")).sort().reverse(); } catch { return ""; }
+  for (const name of names) {
+    let head;
+    try { head = readFileSync(join(dir, name), "utf8").slice(0, 400); } catch { continue; }
+    if (!head.includes(sid)) continue;
+    // 2026-08-17T19-40-19-S2R1-idme_async_verification.md -> "idme async verification"
+    return name
+      .replace(/\.md$/, "")
+      .replace(/^\d{4}-\d{2}-\d{2}T[\d-]+?-[A-Za-z0-9]{4}-/, "")
+      .replace(/_/g, " ")
+      .trim();
+  }
+  return "";
+}
+
+// sessions/<yyyy>/<mm>/<dd>/rollout-<ts>-<sid>.jsonl -- matched on the name, so
+// no file is opened during the walk.
+function codexRolloutPath(sid) {
+  const root = join(CODEX_HOME, "sessions");
+  const stack = [root];
+  while (stack.length) {
+    const dir = stack.pop();
+    let entries;
+    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { continue; }
+    for (const e of entries) {
+      if (e.isDirectory()) stack.push(join(dir, e.name));
+      else if (e.name.includes(sid) && e.name.endsWith(".jsonl")) return join(dir, e.name);
+    }
+  }
+  return "";
+}
+
+function messageText(content) {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) return content.map((c) => (c && c.text) || "").join(" ");
+  return "";
+}
+
+// The first user turn is codex's own AGENTS.md injection; the human's prompt is
+// the next one. Tagged blocks (<environment_context> etc.) are injections too.
+function codexFirstPrompt(sid) {
+  const path = codexRolloutPath(sid);
+  if (!path) return "";
+  let lines;
+  try { lines = readFileSync(path, "utf8").split("\n", 400); } catch { return ""; }
+  for (const line of lines) {
+    let rec;
+    try { rec = JSON.parse(line); } catch { continue; }
+    const payload = rec?.payload;
+    if (!payload || payload.role !== "user") continue;
+    const text = messageText(payload.content).trim();
+    if (!text || text.startsWith("<") || text.startsWith("# AGENTS.md")) continue;
+    // A prompt is a paragraph, not a label; keep enough to identify the session.
+    return cap(limitWords(normalize(text), CODEX_PROMPT_WORDS), CODEX_PROMPT_CHARS);
+  }
+  return "";
+}
+
+function codexSessionTitle(pane) {
+  const sid = pane.agent_session?.value;
+  if (!sid || typeof sid !== "string") return "";
+  const cache = readJson(codexCachePath, {});
+  if (cache[sid] !== undefined) return cache[sid];
+  const title = codexSummarySlug(sid) || codexFirstPrompt(sid);
+  cache[sid] = title;
+  try {
+    mkdirSync(dirname(codexCachePath), { recursive: true });
+    writeFileSync(codexCachePath, `${JSON.stringify(cache, null, 2)}\n`);
+  } catch { /* cache is an optimization; a failed write just means we recompute */ }
+  return title;
+}
+
 function topicFor(pane, cfg) {
   let topic = limitWords(normalize(pane.terminal_title_stripped), cfg.max_words);
-  if (isGenericTopic(topic, pane.agent) && String(pane.agent).toLowerCase() === "grok") {
+  const agent = String(pane.agent).toLowerCase();
+  if (isGenericTopic(topic, pane.agent) && agent === "grok") {
     topic = limitWords(normalize(grokSessionTitle(pane)), cfg.max_words);
+  }
+  // codex's title is its cwd, which isGenericTopic cannot recognise as generic.
+  if (agent === "codex") {
+    const derived = limitWords(normalize(codexSessionTitle(pane)), cfg.max_words);
+    if (derived) topic = derived;
   }
   return isGenericTopic(topic, pane.agent) ? "" : topic;
 }
