@@ -90,3 +90,21 @@ maps).
 ## License
 
 MIT
+
+## Wrapped sidebar labels (local addition)
+
+herdr truncates each sidebar row to the sidebar width; there is no wrap
+setting. With `wrap_tokens = true` the plugin publishes the topic pre-split
+across two custom pane tokens, so the sidebar can render it on two lines:
+
+```toml
+# ~/.config/herdr/config.toml
+[ui.sidebar.agents]
+rows = [
+  ["state_icon", { token = "$topic1", bold = true, dim = false }],
+  [{ token = "$topic2", bold = true, dim = false }],
+]
+```
+
+`wrap_width` (default 32) is the characters per line -- set it to the sidebar
+width minus the state icon. Anything past two lines is still truncated.
