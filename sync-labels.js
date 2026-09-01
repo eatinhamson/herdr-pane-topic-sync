@@ -266,13 +266,15 @@ function codexSessionTitle(pane) {
   const sid = pane.agent_session?.value;
   if (!sid || typeof sid !== "string") return "";
   const cache = readJson(codexCachePath, {});
-  if (cache[sid] !== undefined) return cache[sid];
+  if (cache[sid]) return cache[sid];
   const title = codexSummarySlug(sid) || codexFirstPrompt(sid);
-  cache[sid] = title;
-  try {
-    mkdirSync(dirname(codexCachePath), { recursive: true });
-    writeFileSync(codexCachePath, `${JSON.stringify(cache, null, 2)}\n`);
-  } catch { /* cache is an optimization; a failed write just means we recompute */ }
+  if (title) {
+    cache[sid] = title;
+    try {
+      mkdirSync(dirname(codexCachePath), { recursive: true });
+      writeFileSync(codexCachePath, `${JSON.stringify(cache, null, 2)}\n`);
+    } catch { /* cache is an optimization; a failed write just means we recompute */ }
+  }
   return title;
 }
 
@@ -351,6 +353,11 @@ export function decide(prevEntry, live, wanted) {
   return { label: prev.label, pinned: false, write: false };
 }
 
+function isDefaultCodexLabel(pane) {
+  return String(pane.agent).toLowerCase() === "codex"
+    && normalize(pane.label) === normalize(pane.terminal_title_stripped);
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -402,7 +409,15 @@ function main() {
         applyFormat(cfg.pane_format, { topic: meta.topic, agent: meta.agent, workspace: wsLabel(p.workspace_id) }),
         cfg.max_pane_label_length,
       );
-      const { label, pinned, write } = decide(state.panes[p.pane_id], p.label, wanted);
+      const defaultCodexLabel = isDefaultCodexLabel(p);
+      const prior = defaultCodexLabel && state.panes[p.pane_id]?.label === p.label
+        ? undefined
+        : state.panes[p.pane_id];
+      const { label, pinned, write } = decide(
+        prior,
+        defaultCodexLabel ? "" : p.label,
+        wanted,
+      );
       nextPanes[p.pane_id] = { label, pinned };
       if (write) {
         run(["pane", "rename", p.pane_id, label]);
