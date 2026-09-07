@@ -6,13 +6,13 @@ agent_panel_sort = "spaces"
 
 [ui.sidebar.agents]
 rows = [
-  [{ token = "$space_header", bold = true }],
+  [{ token = "$space_header", bold = true, dim = false }],
   [
-    { token = "$badge_blocked", fg = "#f38ba8", bold = true },
-    { token = "$badge_working", fg = "#89b4fa" },
-    { token = "$badge_done", fg = "#a6e3a1" },
-    { token = "$badge_idle", fg = "#a6adc8" },
-    "tab",
+    { token = "$badge_blocked", fg = "#f38ba8", bold = true, dim = false },
+    { token = "$badge_working", fg = "#89b4fa", bold = true, dim = false },
+    { token = "$badge_done", fg = "#a6e3a1", bold = true, dim = false },
+    { token = "$badge_idle", fg = "#cdd6f4", bold = true, dim = false },
+    { token = "tab", dim = false },
   ],
   ["$group_gap"],
 ]
