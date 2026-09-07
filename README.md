@@ -71,6 +71,7 @@ documented set. Summary:
 | `max_tab_label_length` | `max_label_length` | Tab-only cap. `0` = no limit. |
 | `tab_format` | `"{topic}"` | Template; tokens `{topic}` `{agent}` `{workspace}` `{n}` (tab switch number). |
 | `pane_format` | `"{topic}"` | Template; tokens `{topic}` `{agent}` `{workspace}`. |
+| `sync_space_headers` | `true` | Stamp Agents-panel `$space_header` / `$badge_*` / `$group_gap`. |
 
 Examples: `tab_format = "{n}· {topic}"` keeps the tab switch number;
 `pane_format = "{agent}: {topic}"` prefixes the agent name.
@@ -86,6 +87,25 @@ auto-refreshing as usual. There's no unpin command yet; to hand a pinned
 pane/tab back to auto-sync, delete its entry from
 `$HERDR_PLUGIN_STATE_DIR/pane-topic-sync-state.json` (its `panes`/`tabs`
 maps).
+
+## Agents panel grouping
+
+The plugin also reports display-only pane tokens so the Herdr Agents list can
+group by Space with kind + status glyphs. That half is **not visible** unless
+`~/.config/herdr/config.toml` includes the rows in
+[`examples/herdr-sidebar.toml`](examples/herdr-sidebar.toml). Merge that file,
+then `herdr server reload-config`.
+
+Per Space, in sidebar order:
+
+1. `$space_header` — workspace label, first agent only (own line).
+2. `$badge_blocked` / `$badge_working` / `$badge_done` / `$badge_idle` —
+   `{kind-glyph} {status-glyph}` (`✳ ?`, `● :`, `Ø ○`, …). Sibling rows get a
+   two-cell pad so they line up with the group-leader's continuation indent.
+3. `$group_gap` — blank row on the last agent of every Space except the last.
+
+Tokens refresh on the same events as pane/tab names. Self-check:
+`bun test-space-headers.js`.
 
 ## License
 

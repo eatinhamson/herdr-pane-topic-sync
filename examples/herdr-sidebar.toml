@@ -1,0 +1,18 @@
+# Merge into ~/.config/herdr/config.toml
+# Display half of Agents-panel grouping. Tokens are stamped by this plugin.
+
+[ui]
+agent_panel_sort = "spaces"
+
+[ui.sidebar.agents]
+rows = [
+  [{ token = "$space_header", bold = true }],
+  [
+    { token = "$badge_blocked", fg = "#f38ba8", bold = true },
+    { token = "$badge_working", fg = "#89b4fa" },
+    { token = "$badge_done", fg = "#a6e3a1" },
+    { token = "$badge_idle", fg = "#a6adc8" },
+    "tab",
+  ],
+  ["$group_gap"],
+]

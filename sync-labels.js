@@ -31,6 +31,7 @@ const statePath = join(stateDir, "pane-topic-sync-state.json");
 const DEFAULTS = {
   sync_panes: true,        // rename agent panes to their topic
   sync_tabs: true,         // rename tabs to a pane's topic
+  sync_space_headers: true, // stamp Agents-panel $space_header / $badge_* / $group_gap
   tab_source: "first",     // "first" (top-left) | "active" (tab's focused pane)
   max_label_length: 60,    // truncate longer labels with an ellipsis (0 = no limit)
   max_pane_label_length: null, // pane-only override (0 = no limit; null = use max_label_length)
@@ -80,6 +81,7 @@ function loadConfig() {
   // Validate / coerce.
   cfg.sync_panes = cfg.sync_panes !== false;
   cfg.sync_tabs = cfg.sync_tabs !== false;
+  cfg.sync_space_headers = cfg.sync_space_headers !== false;
   if (cfg.tab_source !== "active") cfg.tab_source = "first";
   const n = parseInt(cfg.max_label_length, 10);
   cfg.max_label_length = Number.isFinite(n) && n >= 0 ? n : DEFAULTS.max_label_length;
@@ -480,12 +482,14 @@ function main() {
     Object.assign(nextTabs, state.tabs);
   }
 
-  const headerWrites = syncSpaceHeaders(panes, state.space_headers || {});
+  const headerWrites = cfg.sync_space_headers
+    ? syncSpaceHeaders(panes, state.space_headers || {})
+    : { next: state.space_headers || {}, writes: 0 };
   saveState({ panes: nextPanes, tabs: nextTabs, space_headers: headerWrites.next });
   console.log(
     `synced: ${paneWrites} pane rename(s), ${tabWrites} tab rename(s), ` +
     `${headerWrites.writes} space header(s) ` +
-    `[panes=${cfg.sync_panes} tabs=${cfg.sync_tabs} source=${cfg.tab_source}]`,
+    `[panes=${cfg.sync_panes} tabs=${cfg.sync_tabs} headers=${cfg.sync_space_headers} source=${cfg.tab_source}]`,
   );
 }
 
@@ -501,7 +505,7 @@ const GAP = "\u2800";
 const BADGE_KEYS = ["badge_blocked", "badge_working", "badge_done", "badge_idle"];
 const TOKEN_KEYS = ["space_header", "group_gap", ...BADGE_KEYS];
 
-function badgeStatus(pane) {
+export function badgeStatus(pane) {
   const s = pane.agent_status;
   if (s === "blocked") return "blocked";
   if (s === "working") return "working";
@@ -509,7 +513,7 @@ function badgeStatus(pane) {
   return "idle";
 }
 
-function kindGlyph(agent) {
+export function kindGlyph(agent) {
   switch (String(agent || "").toLowerCase()) {
     case "claude": return "✳";
     case "codex": return "●";
@@ -520,7 +524,7 @@ function kindGlyph(agent) {
   }
 }
 
-function statusGlyph(status) {
+export function statusGlyph(status) {
   switch (status) {
     case "blocked": return "?";
     case "working": return ":";
@@ -529,8 +533,25 @@ function statusGlyph(status) {
   }
 }
 
-function emptyTokens() {
+export function emptyTokens() {
   return Object.fromEntries(TOKEN_KEYS.map((k) => [k, ""]));
+}
+
+export function spaceHeaderWanted({
+  label,
+  index,
+  groupSize,
+  lastGroup,
+  agent,
+  agent_status,
+  seen,
+}) {
+  const status = badgeStatus({ agent_status, seen });
+  const wanted = emptyTokens();
+  if (index === 0) wanted.space_header = label;
+  wanted[`badge_${status}`] = `${index === 0 ? "" : PAD}${kindGlyph(agent)} ${statusGlyph(status)}`;
+  if (index === groupSize - 1 && !lastGroup) wanted.group_gap = GAP;
+  return wanted;
 }
 
 function readHeaderState(prior, paneId) {
@@ -576,11 +597,15 @@ function syncSpaceHeaders(panes, prior) {
       const pane = agents[i];
       const paneId = pane.pane_id;
       seen.add(paneId);
-      const status = badgeStatus(pane);
-      const wanted = emptyTokens();
-      if (i === 0) wanted.space_header = label;
-      wanted[`badge_${status}`] = `${i === 0 ? "" : PAD}${kindGlyph(pane.agent)} ${statusGlyph(status)}`;
-      if (i === agents.length - 1 && !lastGroup) wanted.group_gap = GAP;
+      const wanted = spaceHeaderWanted({
+        label,
+        index: i,
+        groupSize: agents.length,
+        lastGroup,
+        agent: pane.agent,
+        agent_status: pane.agent_status,
+        seen: pane.seen,
+      });
       next[paneId] = wanted;
       if (applyHeaderTokens(paneId, wanted, readHeaderState(prior, paneId))) writes++;
     }

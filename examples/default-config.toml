@@ -10,6 +10,10 @@
 sync_panes = true
 sync_tabs  = true
 
+# Stamp Agents-panel grouping tokens ($space_header, $badge_*, $group_gap).
+# Requires the sidebar rows in examples/herdr-sidebar.toml.
+sync_space_headers = true
+
 # Which pane's topic names a multi-pane tab:
 #   "first"  = the top-left pane (reading order)
 #   "active" = the pane you last focused *within that tab* (herdr tracks this

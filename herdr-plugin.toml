@@ -1,8 +1,8 @@
 id = "dan.pane-topic-sync"
 name = "Pane Topic Sync"
-version = "0.1.0"
+version = "0.2.0"
 min_herdr_version = "0.7.0"
-description = "Rename each agent pane to its live topic (terminal_title_stripped) and name each tab after its first pane's topic."
+description = "Rename agent panes/tabs to live topics, and stamp Agents-panel space headers plus kind/status badges."
 platforms = ["macos", "linux"]
 
 # Manual trigger, e.g. `herdr plugin action invoke dan.pane-topic-sync.sync`
