@@ -509,6 +509,26 @@ function badgeStatus(pane) {
   return "idle";
 }
 
+function kindGlyph(agent) {
+  switch (String(agent || "").toLowerCase()) {
+    case "claude": return "✳";
+    case "codex": return "●";
+    case "grok": return "Ø";
+    case "cursor": return "▸";
+    case "opencode": return "◇";
+    default: return "·";
+  }
+}
+
+function statusGlyph(status) {
+  switch (status) {
+    case "blocked": return "?";
+    case "working": return ":";
+    case "done": return "✓";
+    default: return "○";
+  }
+}
+
 function emptyTokens() {
   return Object.fromEntries(TOKEN_KEYS.map((k) => [k, ""]));
 }
@@ -523,16 +543,15 @@ function readHeaderState(prior, paneId) {
 }
 
 function applyHeaderTokens(paneId, wanted, prev) {
+  const same = TOKEN_KEYS.every((k) => (prev[k] || "") === (wanted[k] || ""));
   const args = ["pane", "report-metadata", paneId, "--source", SPACE_HEADER_SOURCE];
-  let changed = false;
   for (const key of TOKEN_KEYS) {
-    if ((prev[key] || "") === (wanted[key] || "")) continue;
-    changed = true;
     if (wanted[key]) args.push("--token", `${key}=${wanted[key]}`);
     else args.push("--clear-token", key);
   }
-  if (changed) run(args);
-  return changed;
+  if (same) return false;
+  run(args);
+  return true;
 }
 
 function syncSpaceHeaders(panes, prior) {
@@ -558,10 +577,9 @@ function syncSpaceHeaders(panes, prior) {
       const paneId = pane.pane_id;
       seen.add(paneId);
       const status = badgeStatus(pane);
-      const kind = String(pane.agent || "agent");
       const wanted = emptyTokens();
       if (i === 0) wanted.space_header = label;
-      wanted[`badge_${status}`] = `${i === 0 ? "" : PAD}● ${kind}`;
+      wanted[`badge_${status}`] = `${i === 0 ? "" : PAD}${kindGlyph(pane.agent)} ${statusGlyph(status)}`;
       if (i === agents.length - 1 && !lastGroup) wanted.group_gap = GAP;
       next[paneId] = wanted;
       if (applyHeaderTokens(paneId, wanted, readHeaderState(prior, paneId))) writes++;
