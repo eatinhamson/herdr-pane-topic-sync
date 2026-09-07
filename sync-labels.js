@@ -480,11 +480,69 @@ function main() {
     Object.assign(nextTabs, state.tabs);
   }
 
-  saveState({ panes: nextPanes, tabs: nextTabs });
+  const headerWrites = syncSpaceHeaders(panes, state.space_headers || {});
+  saveState({ panes: nextPanes, tabs: nextTabs, space_headers: headerWrites.next });
   console.log(
-    `synced: ${paneWrites} pane rename(s), ${tabWrites} tab rename(s) ` +
+    `synced: ${paneWrites} pane rename(s), ${tabWrites} tab rename(s), ` +
+    `${headerWrites.writes} space header(s) ` +
     `[panes=${cfg.sync_panes} tabs=${cfg.sync_tabs} source=${cfg.tab_source}]`,
   );
+}
+
+// First agent in each space gets $space_header; later agents in that space
+// clear it so the Agents panel can show a one-line Space title, then tasks.
+const SPACE_HEADER_SOURCE = "plugin:dan.pane-topic-sync";
+
+function syncSpaceHeaders(panes, prior) {
+  const workspaces = json(["workspace", "list"])?.result?.workspaces ?? [];
+  const byWs = new Map();
+  for (const p of panes) {
+    if (!p.agent) continue;
+    if (!byWs.has(p.workspace_id)) byWs.set(p.workspace_id, []);
+    byWs.get(p.workspace_id).push(p);
+  }
+
+  const next = {};
+  let writes = 0;
+  const seen = new Set();
+  for (const ws of workspaces) {
+    const agents = byWs.get(ws.workspace_id) || [];
+    for (let i = 0; i < agents.length; i++) {
+      const paneId = agents[i].pane_id;
+      seen.add(paneId);
+      const wanted = i === 0 ? String(ws.label || "").trim() : "";
+      next[paneId] = wanted;
+      if ((prior[paneId] || "") === wanted) continue;
+      if (wanted) {
+        run([
+          "pane", "report-metadata", paneId,
+          "--source", SPACE_HEADER_SOURCE,
+          "--token", `space_header=${wanted}`,
+        ]);
+      } else {
+        run([
+          "pane", "report-metadata", paneId,
+          "--source", SPACE_HEADER_SOURCE,
+          "--clear-token", "space_header",
+        ]);
+      }
+      writes++;
+    }
+  }
+  for (const paneId of Object.keys(prior)) {
+    if (seen.has(paneId) || !prior[paneId]) continue;
+    try {
+      run([
+        "pane", "report-metadata", paneId,
+        "--source", SPACE_HEADER_SOURCE,
+        "--clear-token", "space_header",
+      ]);
+      writes++;
+    } catch {
+      // pane gone
+    }
+  }
+  return { next, writes };
 }
 
 // Which pane's topic represents a tab, per config.
