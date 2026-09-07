@@ -489,9 +489,51 @@ function main() {
   );
 }
 
-// First agent in each space gets $space_header; later agents in that space
-// clear it so the Agents panel can show a one-line Space title, then tasks.
+// Agents-panel grouping tokens:
+//   $space_header  first agent in a space (own line)
+//   $pad           two NBSPs on later agents so their task line matches
+//                  Herdr's continuation indent (row 1 is padded, row 0 is not)
+//   $group_gap     trailing blank row on the last agent of a space that is
+//                  not the last space, so groups are separated vertically
 const SPACE_HEADER_SOURCE = "plugin:dan.pane-topic-sync";
+const PAD = "\u2800\u2800";
+const GAP = "\u2800";
+const BADGE_KEYS = ["badge_blocked", "badge_working", "badge_done", "badge_idle"];
+const TOKEN_KEYS = ["space_header", "group_gap", ...BADGE_KEYS];
+
+function badgeStatus(pane) {
+  const s = pane.agent_status;
+  if (s === "blocked") return "blocked";
+  if (s === "working") return "working";
+  if (s === "idle" && pane.seen === false) return "done";
+  return "idle";
+}
+
+function emptyTokens() {
+  return Object.fromEntries(TOKEN_KEYS.map((k) => [k, ""]));
+}
+
+function readHeaderState(prior, paneId) {
+  const v = prior[paneId];
+  const base = emptyTokens();
+  if (v == null) return base;
+  if (typeof v === "string") return { ...base, space_header: v };
+  for (const key of TOKEN_KEYS) base[key] = v[key] || "";
+  return base;
+}
+
+function applyHeaderTokens(paneId, wanted, prev) {
+  const args = ["pane", "report-metadata", paneId, "--source", SPACE_HEADER_SOURCE];
+  let changed = false;
+  for (const key of TOKEN_KEYS) {
+    if ((prev[key] || "") === (wanted[key] || "")) continue;
+    changed = true;
+    if (wanted[key]) args.push("--token", `${key}=${wanted[key]}`);
+    else args.push("--clear-token", key);
+  }
+  if (changed) run(args);
+  return changed;
+}
 
 function syncSpaceHeaders(panes, prior) {
   const workspaces = json(["workspace", "list"])?.result?.workspaces ?? [];
@@ -501,43 +543,36 @@ function syncSpaceHeaders(panes, prior) {
     if (!byWs.has(p.workspace_id)) byWs.set(p.workspace_id, []);
     byWs.get(p.workspace_id).push(p);
   }
+  const groups = workspaces
+    .map((ws) => ({ label: String(ws.label || "").trim(), agents: byWs.get(ws.workspace_id) || [] }))
+    .filter((g) => g.agents.length);
 
   const next = {};
   let writes = 0;
   const seen = new Set();
-  for (const ws of workspaces) {
-    const agents = byWs.get(ws.workspace_id) || [];
+  for (let g = 0; g < groups.length; g++) {
+    const { label, agents } = groups[g];
+    const lastGroup = g === groups.length - 1;
     for (let i = 0; i < agents.length; i++) {
-      const paneId = agents[i].pane_id;
+      const pane = agents[i];
+      const paneId = pane.pane_id;
       seen.add(paneId);
-      const wanted = i === 0 ? String(ws.label || "").trim() : "";
+      const status = badgeStatus(pane);
+      const kind = String(pane.agent || "agent");
+      const wanted = emptyTokens();
+      if (i === 0) wanted.space_header = label;
+      wanted[`badge_${status}`] = `${i === 0 ? "" : PAD}● ${kind}`;
+      if (i === agents.length - 1 && !lastGroup) wanted.group_gap = GAP;
       next[paneId] = wanted;
-      if ((prior[paneId] || "") === wanted) continue;
-      if (wanted) {
-        run([
-          "pane", "report-metadata", paneId,
-          "--source", SPACE_HEADER_SOURCE,
-          "--token", `space_header=${wanted}`,
-        ]);
-      } else {
-        run([
-          "pane", "report-metadata", paneId,
-          "--source", SPACE_HEADER_SOURCE,
-          "--clear-token", "space_header",
-        ]);
-      }
-      writes++;
+      if (applyHeaderTokens(paneId, wanted, readHeaderState(prior, paneId))) writes++;
     }
   }
   for (const paneId of Object.keys(prior)) {
-    if (seen.has(paneId) || !prior[paneId]) continue;
+    if (seen.has(paneId)) continue;
+    const prev = readHeaderState(prior, paneId);
+    if (!TOKEN_KEYS.some((k) => prev[k])) continue;
     try {
-      run([
-        "pane", "report-metadata", paneId,
-        "--source", SPACE_HEADER_SOURCE,
-        "--clear-token", "space_header",
-      ]);
-      writes++;
+      if (applyHeaderTokens(paneId, emptyTokens(), prev)) writes++;
     } catch {
       // pane gone
     }
