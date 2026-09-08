@@ -98,10 +98,10 @@ then `herdr server reload-config`.
 
 Per Space, in sidebar order:
 
-Compact **one content row per agent** (no indent):
-
-1. `$space_header` — workspace label on the first agent of a Space only.
-2. `$kind_{claude|codex|grok|other}` — brand glyph (`✳` / `●` / `Ø`).
+1. `$space_header` — workspace label on its own line (first agent of a Space).
+2. `$kind_{claude|codex|grok|other}` — brand glyph (`✳` / `●` / `Ø`). Sibling
+   rows get a two-cell pad so every agent lines up under the heading (Herdr
+   continuation-indents the group leader's agent row).
 3. `$stat_{blocked|working|done|idle}` — lifecycle glyph (`?` / `:` / `✓` /
    `○`).
 4. `$group_gap` — blank row after the last agent of each Space except the last.

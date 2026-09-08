@@ -493,12 +493,14 @@ function main() {
   );
 }
 
-// Agents-panel grouping tokens (compact single-row layout):
-//   $space_header     workspace label on the first agent of a space (same row)
-//   $kind_{claude|codex|grok|other}  brand glyph
-//   $stat_{blocked|working|done|idle}  lifecycle glyph
+// Agents-panel grouping tokens:
+//   $space_header     workspace label on its own line (first agent of a space)
+//   $kind_*           brand glyph; siblings get a 2-cell pad so they line up
+//                     with Herdr's continuation indent on the group leader
+//   $stat_*           lifecycle glyph
 //   $group_gap        blank row after the last agent of a space (except last)
 const SPACE_HEADER_SOURCE = "plugin:dan.pane-topic-sync";
+const PAD = "\u2800\u2800";
 const GAP = "\u2800";
 const KIND_KEYS = ["kind_claude", "kind_codex", "kind_grok", "kind_other"];
 const STAT_KEYS = ["stat_blocked", "stat_working", "stat_done", "stat_idle"];
@@ -558,7 +560,10 @@ export function spaceHeaderWanted({
   const status = badgeStatus({ agent_status, seen });
   const wanted = emptyTokens();
   if (index === 0) wanted.space_header = label;
-  wanted[`kind_${kindKey(agent)}`] = kindGlyph(agent);
+  // Group leader's agent row is Herdr continuation-indented (header above it).
+  // Sibling rows are not, so pad them to the same column — no ragged indent.
+  const pad = index === 0 ? "" : PAD;
+  wanted[`kind_${kindKey(agent)}`] = `${pad}${kindGlyph(agent)}`;
   wanted[`stat_${status}`] = statusGlyph(status);
   if (index === groupSize - 1 && !lastGroup) wanted.group_gap = GAP;
   return wanted;
