@@ -98,13 +98,12 @@ then `herdr server reload-config`.
 
 Per Space, in sidebar order:
 
-1. `$space_header` — workspace label, first agent only (own line).
-2. `$kind_{claude|codex|grok|other}` — brand glyph (`✳` / `●` / `Ø`), brand
-   color. Sibling rows get a two-cell pad so they line up with the
-   group-leader's continuation indent.
+Compact **one row per agent** (no indent, no blank spacers):
+
+1. `$space_header` — workspace label on the first agent of a Space only.
+2. `$kind_{claude|codex|grok|other}` — brand glyph (`✳` / `●` / `Ø`).
 3. `$stat_{blocked|working|done|idle}` — lifecycle glyph (`?` / `:` / `✓` /
-   `○`), status color.
-4. `$group_gap` — blank row on the last agent of every Space except the last.
+   `○`).
 
 Tokens refresh on the same events as pane/tab names. Self-check:
 `bun test-space-headers.js`.

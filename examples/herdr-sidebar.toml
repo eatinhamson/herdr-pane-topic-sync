@@ -6,10 +6,11 @@
 agent_panel_sort = "spaces"
 
 [ui.sidebar.agents]
+# One row per agent: optional space label, kind glyph, status glyph, topic.
+# No continuation indent and no blank spacer rows.
 rows = [
-  [{ token = "$space_header", bold = true, dim = false }],
   [
-    # Kind = brand color. Status = lifecycle color. Only one of each is set.
+    { token = "$space_header", bold = true, dim = false },
     { token = "$kind_claude", fg = "#fab387", bold = true, dim = false },
     { token = "$kind_codex", fg = "#cba6f7", bold = true, dim = false },
     { token = "$kind_grok", fg = "#94e2d5", bold = true, dim = false },
@@ -20,5 +21,4 @@ rows = [
     { token = "$stat_idle", fg = "#6c7086", dim = false },
     { token = "tab", dim = false },
   ],
-  ["$group_gap"],
 ]

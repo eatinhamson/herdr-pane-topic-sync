@@ -37,7 +37,6 @@ assert.equal(first.stat_idle, "○");
 assert.equal(first.kind_claude, "");
 assert.equal(first.stat_blocked, "");
 assert.equal(first.group_gap, "");
-assert.equal(first.badge_idle, "");
 
 const last = spaceHeaderWanted({
   label: "MSFT",
@@ -49,10 +48,9 @@ const last = spaceHeaderWanted({
   seen: true,
 });
 assert.equal(last.space_header, "");
-assert.ok(last.kind_grok.endsWith("Ø"));
-assert.notEqual(last.kind_grok, first.kind_grok);
+assert.equal(last.kind_grok, "Ø");
 assert.equal(last.stat_idle, "○");
-assert.equal(last.group_gap, "\u2800");
+assert.equal(last.group_gap, "");
 
 const blocked = spaceHeaderWanted({
   label: "Vault Keeper",
