@@ -48,7 +48,8 @@ const last = spaceHeaderWanted({
   seen: true,
 });
 assert.equal(last.space_header, "");
-assert.equal(last.kind_grok, "Ø");
+assert.ok(last.kind_grok.endsWith("Ø"));
+assert.notEqual(last.kind_grok, first.kind_grok);
 assert.equal(last.stat_idle, "○");
 assert.equal(last.group_gap, "\u2800");
 
