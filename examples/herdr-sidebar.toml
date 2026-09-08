@@ -6,7 +6,7 @@
 agent_panel_sort = "spaces"
 
 [ui.sidebar.agents]
-# Space name on its own line; agents indented under it; blank between Spaces.
+# Space name on its own line; agents flush (no sibling pads); blank between Spaces.
 rows = [
   [{ token = "$space_header", bold = true, dim = false }],
   [
