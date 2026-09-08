@@ -50,7 +50,7 @@ const last = spaceHeaderWanted({
 assert.equal(last.space_header, "");
 assert.equal(last.kind_grok, "Ø");
 assert.equal(last.stat_idle, "○");
-assert.equal(last.group_gap, "");
+assert.equal(last.group_gap, "\u2800");
 
 const blocked = spaceHeaderWanted({
   label: "Vault Keeper",

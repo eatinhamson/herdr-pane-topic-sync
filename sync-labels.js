@@ -497,14 +497,13 @@ function main() {
 //   $space_header     workspace label on the first agent of a space (same row)
 //   $kind_{claude|codex|grok|other}  brand glyph
 //   $stat_{blocked|working|done|idle}  lifecycle glyph
+//   $group_gap        blank row after the last agent of a space (except last)
 const SPACE_HEADER_SOURCE = "plugin:dan.pane-topic-sync";
+const GAP = "\u2800";
 const KIND_KEYS = ["kind_claude", "kind_codex", "kind_grok", "kind_other"];
 const STAT_KEYS = ["stat_blocked", "stat_working", "stat_done", "stat_idle"];
-const LEGACY_KEYS = [
-  "group_gap",
-  "badge_blocked", "badge_working", "badge_done", "badge_idle",
-];
-const TOKEN_KEYS = ["space_header", ...KIND_KEYS, ...STAT_KEYS, ...LEGACY_KEYS];
+const LEGACY_KEYS = ["badge_blocked", "badge_working", "badge_done", "badge_idle"];
+const TOKEN_KEYS = ["space_header", "group_gap", ...KIND_KEYS, ...STAT_KEYS, ...LEGACY_KEYS];
 
 export function badgeStatus(pane) {
   const s = pane.agent_status;
@@ -561,6 +560,7 @@ export function spaceHeaderWanted({
   if (index === 0) wanted.space_header = label;
   wanted[`kind_${kindKey(agent)}`] = kindGlyph(agent);
   wanted[`stat_${status}`] = statusGlyph(status);
+  if (index === groupSize - 1 && !lastGroup) wanted.group_gap = GAP;
   return wanted;
 }
 
