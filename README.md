@@ -46,7 +46,7 @@ Plain (non-agent) shell panes are left untouched.
 Requires [bun](https://bun.sh) on `PATH`.
 
 ```sh
-git clone https://github.com/eatinhamson/herdr-pane-topic-sync.git
+git clone -b agents-panel-grouping https://github.com/eatinhamson/herdr-pane-topic-sync.git
 cd herdr-pane-topic-sync
 herdr plugin link "$PWD"
 ```
