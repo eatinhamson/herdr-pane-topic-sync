@@ -6,12 +6,11 @@
 agent_panel_sort = "spaces"
 
 [ui.sidebar.agents]
-# Space name on its own line; agents flush under it (siblings pad to match
-# Herdr's continuation indent on the group-leader's agent row). Blank row
-# between Spaces via $group_gap.
+# One flush row per agent. Space label only on the first agent of a Space.
+# Blank row between Spaces via $group_gap (no per-row indent/pad).
 rows = [
-  [{ token = "$space_header", bold = true, dim = false }],
   [
+    { token = "$space_header", bold = true, dim = false },
     { token = "$kind_claude", fg = "#fab387", bold = true, dim = false },
     { token = "$kind_codex", fg = "#cba6f7", bold = true, dim = false },
     { token = "$kind_grok", fg = "#94e2d5", bold = true, dim = false },
