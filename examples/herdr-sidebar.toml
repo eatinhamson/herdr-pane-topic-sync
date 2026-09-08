@@ -1,5 +1,6 @@
 # Merge into ~/.config/herdr/config.toml
 # Display half of Agents-panel grouping. Tokens are stamped by this plugin.
+# A locally built Herdr 0.8.2 renders these rows flush-left.
 
 [ui]
 agent_panel_sort = "spaces"
@@ -8,10 +9,15 @@ agent_panel_sort = "spaces"
 rows = [
   [{ token = "$space_header", bold = true, dim = false }],
   [
-    { token = "$badge_blocked", fg = "#f38ba8", bold = true, dim = false },
-    { token = "$badge_working", fg = "#89b4fa", bold = true, dim = false },
-    { token = "$badge_done", fg = "#a6e3a1", bold = true, dim = false },
-    { token = "$badge_idle", fg = "#cdd6f4", bold = true, dim = false },
+    # Kind = brand color. Status = lifecycle color. Only one of each is set.
+    { token = "$kind_claude", fg = "#fab387", bold = true, dim = false },
+    { token = "$kind_codex", fg = "#cba6f7", bold = true, dim = false },
+    { token = "$kind_grok", fg = "#94e2d5", bold = true, dim = false },
+    { token = "$kind_other", fg = "#cdd6f4", bold = true, dim = false },
+    { token = "$stat_blocked", fg = "#f38ba8", bold = true, dim = false },
+    { token = "$stat_working", fg = "#f9e2af", bold = true, dim = false },
+    { token = "$stat_done", fg = "#a6e3a1", bold = true, dim = false },
+    { token = "$stat_idle", fg = "#6c7086", dim = false },
     { token = "tab", dim = false },
   ],
   ["$group_gap"],

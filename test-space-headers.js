@@ -4,6 +4,7 @@ import assert from "node:assert";
 import {
   badgeStatus,
   kindGlyph,
+  kindKey,
   statusGlyph,
   spaceHeaderWanted,
 } from "./sync-labels.js";
@@ -11,6 +12,8 @@ import {
 assert.equal(kindGlyph("claude"), "✳");
 assert.equal(kindGlyph("codex"), "●");
 assert.equal(kindGlyph("grok"), "Ø");
+assert.equal(kindKey("claude"), "claude");
+assert.equal(kindKey("cursor"), "other");
 assert.equal(statusGlyph("blocked"), "?");
 assert.equal(statusGlyph("working"), ":");
 assert.equal(statusGlyph("done"), "✓");
@@ -29,9 +32,12 @@ const first = spaceHeaderWanted({
   seen: true,
 });
 assert.equal(first.space_header, "MSFT");
-assert.equal(first.badge_idle, "Ø ○");
+assert.equal(first.kind_grok, "Ø");
+assert.equal(first.stat_idle, "○");
+assert.equal(first.kind_claude, "");
+assert.equal(first.stat_blocked, "");
 assert.equal(first.group_gap, "");
-assert.equal(first.badge_blocked, "");
+assert.equal(first.badge_idle, "");
 
 const last = spaceHeaderWanted({
   label: "MSFT",
@@ -43,11 +49,12 @@ const last = spaceHeaderWanted({
   seen: true,
 });
 assert.equal(last.space_header, "");
-assert.ok(last.badge_idle.endsWith("Ø ○"));
-assert.notEqual(last.badge_idle, first.badge_idle);
+assert.ok(last.kind_grok.endsWith("Ø"));
+assert.notEqual(last.kind_grok, first.kind_grok);
+assert.equal(last.stat_idle, "○");
 assert.equal(last.group_gap, "\u2800");
 
-const vkFirst = spaceHeaderWanted({
+const blocked = spaceHeaderWanted({
   label: "Vault Keeper",
   index: 0,
   groupSize: 3,
@@ -55,8 +62,9 @@ const vkFirst = spaceHeaderWanted({
   agent: "claude",
   agent_status: "blocked",
 });
-assert.equal(vkFirst.space_header, "Vault Keeper");
-assert.equal(vkFirst.badge_blocked, "✳ ?");
-assert.equal(vkFirst.group_gap, "");
+assert.equal(blocked.space_header, "Vault Keeper");
+assert.equal(blocked.kind_claude, "✳");
+assert.equal(blocked.stat_blocked, "?");
+assert.equal(blocked.group_gap, "");
 
 console.log("ok");

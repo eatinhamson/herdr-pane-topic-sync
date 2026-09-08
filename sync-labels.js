@@ -494,16 +494,17 @@ function main() {
 }
 
 // Agents-panel grouping tokens:
-//   $space_header  first agent in a space (own line)
-//   $pad           two NBSPs on later agents so their task line matches
-//                  Herdr's continuation indent (row 1 is padded, row 0 is not)
-//   $group_gap     trailing blank row on the last agent of a space that is
-//                  not the last space, so groups are separated vertically
+//   $space_header     first agent in a space (own line)
+//   $kind_{claude|codex|grok|other}  brand glyph (pad on siblings)
+//   $stat_{blocked|working|done|idle}  lifecycle glyph
+//   $group_gap        trailing blank row between spaces
 const SPACE_HEADER_SOURCE = "plugin:dan.pane-topic-sync";
 const PAD = "\u2800\u2800";
 const GAP = "\u2800";
-const BADGE_KEYS = ["badge_blocked", "badge_working", "badge_done", "badge_idle"];
-const TOKEN_KEYS = ["space_header", "group_gap", ...BADGE_KEYS];
+const KIND_KEYS = ["kind_claude", "kind_codex", "kind_grok", "kind_other"];
+const STAT_KEYS = ["stat_blocked", "stat_working", "stat_done", "stat_idle"];
+const LEGACY_BADGE_KEYS = ["badge_blocked", "badge_working", "badge_done", "badge_idle"];
+const TOKEN_KEYS = ["space_header", "group_gap", ...KIND_KEYS, ...STAT_KEYS, ...LEGACY_BADGE_KEYS];
 
 export function badgeStatus(pane) {
   const s = pane.agent_status;
@@ -511,6 +512,15 @@ export function badgeStatus(pane) {
   if (s === "working") return "working";
   if (s === "idle" && pane.seen === false) return "done";
   return "idle";
+}
+
+export function kindKey(agent) {
+  switch (String(agent || "").toLowerCase()) {
+    case "claude": return "claude";
+    case "codex": return "codex";
+    case "grok": return "grok";
+    default: return "other";
+  }
 }
 
 export function kindGlyph(agent) {
@@ -549,7 +559,9 @@ export function spaceHeaderWanted({
   const status = badgeStatus({ agent_status, seen });
   const wanted = emptyTokens();
   if (index === 0) wanted.space_header = label;
-  wanted[`badge_${status}`] = `${index === 0 ? "" : PAD}${kindGlyph(agent)} ${statusGlyph(status)}`;
+  const pad = index === 0 ? "" : PAD;
+  wanted[`kind_${kindKey(agent)}`] = `${pad}${kindGlyph(agent)}`;
+  wanted[`stat_${status}`] = statusGlyph(status);
   if (index === groupSize - 1 && !lastGroup) wanted.group_gap = GAP;
   return wanted;
 }
