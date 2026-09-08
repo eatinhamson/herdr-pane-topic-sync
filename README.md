@@ -136,7 +136,9 @@ Tokens (stamped by this plugin; rendered by `examples/herdr-sidebar.toml`):
    status color.
 4. `$group_gap` — blank row after the last agent of each Space except the last.
 
-Herdr inserts ` · ` between adjacent tokens; that separator is not configurable.
+Stock Herdr inserts ` · ` between adjacent tokens. The flush patch in this repo
+also switches that separator to a single space, so rows read
+`✳ ○ title` instead of `✳ · ○ · title`.
 
 ## License
 

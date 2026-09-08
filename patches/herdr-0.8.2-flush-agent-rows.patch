@@ -1,5 +1,5 @@
 diff --git a/src/ui/sidebar.rs b/src/ui/sidebar.rs
-index a6dfbcd..a31ad61 100644
+index a6dfbcd..e3a56d6 100644
 --- a/src/ui/sidebar.rs
 +++ b/src/ui/sidebar.rs
 @@ -1520,7 +1520,7 @@ fn render_agent_detail(
@@ -21,7 +21,18 @@ index a6dfbcd..a31ad61 100644
              ));
              frame.render_widget(
                  Paragraph::new(Line::from(spans)).style(row_style),
-@@ -1990,8 +1989,8 @@ rows = [[{ token = "git_status", fg = "#123456" }]]
+@@ -1913,7 +1912,9 @@ rows = [[{ token = "$hype", fg = "#abcdef", bold = true, dim = false }, "workspa
+         let buffer = terminal.backend().buffer();
+         let h = buffer[(find_symbol_x(buffer, row, 25, "H"), row)].style();
+         let i = buffer[(find_symbol_x(buffer, row, 25, "I"), row)].style();
+-        let separator = buffer[(find_symbol_x(buffer, row, 25, "·"), row)].style();
++        let i_x = find_symbol_x(buffer, row, 25, "I");
++        let separator = buffer[(i_x + 1, row)].style();
++        assert_eq!(buffer[(i_x + 1, row)].symbol(), " ");
+ 
+         for style in [h, i] {
+             assert_eq!(style.fg, Some(ratatui::style::Color::Rgb(0xab, 0xcd, 0xef)));
+@@ -1990,8 +1991,8 @@ rows = [[{ token = "git_status", fg = "#123456" }]]
  
          assert_eq!(metrics.viewport_rows, 2);
          assert_eq!(metrics.max_offset_from_bottom, 0);
@@ -32,3 +43,26 @@ index a6dfbcd..a31ad61 100644
      }
  
      #[test]
+diff --git a/src/ui/sidebar/tokens.rs b/src/ui/sidebar/tokens.rs
+index c578e13..d5d0b05 100644
+--- a/src/ui/sidebar/tokens.rs
++++ b/src/ui/sidebar/tokens.rs
+@@ -141,14 +141,10 @@ pub(super) fn space_rows(
+         .collect()
+ }
+ 
+-pub(super) fn separator(previous: &ResolvedToken, current: &ResolvedToken) -> &'static str {
+-    if matches!(previous.kind, ResolvedTokenKind::StateIcon)
+-        || matches!(current.kind, ResolvedTokenKind::GitStatus { .. })
+-    {
+-        " "
+-    } else {
+-        " · "
+-    }
++pub(super) fn separator(_previous: &ResolvedToken, _current: &ResolvedToken) -> &'static str {
++    // Single space between all adjacent tokens (no middot). Keeps Agents-panel
++    // rows compact: kind status title instead of kind · status · title.
++    " "
+ }
+ 
+ #[cfg(test)]

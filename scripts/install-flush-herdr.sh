@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Build Herdr 0.8.2 with flush Agents-panel rows (no renderer-owned indent)
-# and install to ~/.local/bin/herdr-flush-agents.
+# Build Herdr 0.8.2 with:
+#   - flush Agents-panel rows (no renderer-owned indent)
+#   - space separators instead of middots between tokens
+# Installs to ~/.local/bin/herdr-flush-agents.
 #
 # Usage:
 #   ./scripts/install-flush-herdr.sh
