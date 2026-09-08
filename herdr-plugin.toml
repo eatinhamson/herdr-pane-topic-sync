@@ -1,8 +1,8 @@
 id = "dan.pane-topic-sync"
 name = "Pane Topic Sync"
-version = "0.2.0"
+version = "0.3.0"
 min_herdr_version = "0.7.0"
-description = "Rename agent panes/tabs to live topics, and stamp Agents-panel space headers plus kind/status badges."
+description = "Rename agent panes/tabs to live topics, and stamp Agents-panel Space headers with kind/status glyphs."
 platforms = ["macos", "linux"]
 
 # Manual trigger, e.g. `herdr plugin action invoke dan.pane-topic-sync.sync`

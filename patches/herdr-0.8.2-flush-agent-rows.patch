@@ -1,0 +1,34 @@
+diff --git a/src/ui/sidebar.rs b/src/ui/sidebar.rs
+index a6dfbcd..a31ad61 100644
+--- a/src/ui/sidebar.rs
++++ b/src/ui/sidebar.rs
+@@ -1520,7 +1520,7 @@ fn render_agent_detail(
+         let state_icon = state_icon(detail.state, detail.seen, app.status_indicators, p);
+ 
+         for (row_index, resolved) in rows.iter().take(height as usize).enumerate() {
+-            let mut spans = vec![Span::raw(if row_index == 0 { " " } else { "   " })];
++            let mut spans = Vec::new();
+             spans.extend(resolved_token_spans(
+                 resolved,
+                 state_icon,
+@@ -1529,8 +1529,7 @@ fn render_agent_detail(
+                 agent_style,
+                 agent_style,
+                 p,
+-                body.width
+-                    .saturating_sub(if row_index == 0 { 1 } else { 3 }) as usize,
++                body.width as usize,
+             ));
+             frame.render_widget(
+                 Paragraph::new(Line::from(spans)).style(row_style),
+@@ -1990,8 +1989,8 @@ rows = [[{ token = "git_status", fg = "#123456" }]]
+ 
+         assert_eq!(metrics.viewport_rows, 2);
+         assert_eq!(metrics.max_offset_from_bottom, 0);
+-        assert_eq!(row_text(buffer, body.y, body.width), " pi");
+-        assert_eq!(row_text(buffer, body.y + 1, body.width), " claude");
++        assert_eq!(row_text(buffer, body.y, body.width), "pi");
++        assert_eq!(row_text(buffer, body.y + 1, body.width), "claude");
+     }
+ 
+     #[test]

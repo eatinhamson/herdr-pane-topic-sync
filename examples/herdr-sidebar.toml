@@ -1,12 +1,12 @@
 # Merge into ~/.config/herdr/config.toml
 # Display half of Agents-panel grouping. Tokens are stamped by this plugin.
-# A locally built Herdr 0.8.2 renders these rows flush-left.
+# For flush rows under Space headings, also apply
+# patches/herdr-0.8.2-flush-agent-rows.patch (see scripts/install-flush-herdr.sh).
 
 [ui]
 agent_panel_sort = "spaces"
 
 [ui.sidebar.agents]
-# Space name on its own line; agents flush (no sibling pads); blank between Spaces.
 rows = [
   [{ token = "$space_header", bold = true, dim = false }],
   [

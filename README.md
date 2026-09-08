@@ -1,7 +1,18 @@
 # Pane Topic Sync
 
 A [herdr](https://herdr.dev) plugin that auto-names your panes and tabs after
-what each agent is actually working on — no more tabs labeled `1`, `2`, `3`.
+what each agent is actually working on — and optionally stamps Agents-panel
+tokens so the sidebar groups by Space with kind + status glyphs.
+
+```
+MSFT
+Ø · ○ · Outlook Inbox Noise Cleanup…
+Ø · ○ · Get teams-web ready for Herdr…
+
+Vault Keeper
+● · ○ · need to create something like…
+✳ · ○ · Guest Attributes Combinatorial…
+```
 
 On every relevant herdr event it:
 
@@ -13,6 +24,8 @@ On every relevant herdr event it:
 2. **Renames each tab** to the topic of its **first pane** (top-left, reading
    order). If the first pane is a plain shell, the first *agent* pane's topic is
    used instead, so a tab is never named after a shell prompt.
+3. **Stamps Agents-panel tokens** (`$space_header`, `$kind_*`, `$stat_*`,
+   `$group_gap`) when `sync_space_headers = true` (default).
 
 Plain (non-agent) shell panes are left untouched.
 
@@ -24,33 +37,58 @@ Plain (non-agent) shell panes are left untouched.
 - Deliberately does **not** subscribe to `*.renamed` events, so its own renames
   can't feed back into a loop.
 - Gates all writes through a state file (`$HERDR_PLUGIN_STATE_DIR/pane-topic-sync-state.json`),
-  so `rename` is only called when a topic actually changed — no churn.
+  so `rename` / metadata writes only happen when values change — no churn.
 - "First pane" is resolved from `herdr pane layout` rect coordinates, sorted by
   `(y, x)`, so it's the visually top-left pane regardless of split order.
 
-## Install
+## Install (shareable)
 
-Local (development):
+Requires [bun](https://bun.sh) on `PATH`.
 
 ```sh
-git clone <this-repo> ~/repos/herdr-pane-topic-sync
-herdr plugin link ~/repos/herdr-pane-topic-sync
-herdr server reload-config
+git clone https://github.com/eatinhamson/herdr-pane-topic-sync.git
+cd herdr-pane-topic-sync
+herdr plugin link "$PWD"
 ```
 
-Requires [bun](https://bun.sh) on `PATH` (herdr runs `bun sync-labels.js`).
+### 1. Agents-panel sidebar rows
 
-To see topics on pane borders too, add to `~/.config/herdr/config.toml`:
+Merge [`examples/herdr-sidebar.toml`](examples/herdr-sidebar.toml) into
+`~/.config/herdr/config.toml`, then:
 
-```toml
-[ui]
-show_agent_labels_on_pane_borders = true
+```sh
+herdr server reload-config
+herdr plugin action invoke sync --plugin dan.pane-topic-sync
+```
+
+### 2. Flush headings (recommended)
+
+Stock Herdr 0.8.2 continuation-indents every Agents-panel row after the first
+line of an entry, so a Space heading on its own line indents the first agent
+under it. This repo ships a tiny upstream patch that removes that prefix:
+
+```sh
+./scripts/install-flush-herdr.sh
+# then point PATH herdr at the build, e.g.:
+ln -sf ~/.local/bin/herdr-flush-agents /opt/homebrew/bin/herdr
+```
+
+Patch: [`patches/herdr-0.8.2-flush-agent-rows.patch`](patches/herdr-0.8.2-flush-agent-rows.patch).
+Without it, headings still work; the first agent under each heading sits one
+step in.
+
+### Verify
+
+```sh
+bun test-decide.js
+bun test-space-headers.js
+herdr plugin action invoke sync --plugin dan.pane-topic-sync
 ```
 
 ## Manual sync / debugging
 
 ```sh
-herdr plugin action invoke dan.pane-topic-sync.sync
+herdr plugin action invoke sync --plugin dan.pane-topic-sync
 herdr plugin log list --plugin dan.pane-topic-sync --limit 5
 ```
 
@@ -71,7 +109,7 @@ documented set. Summary:
 | `max_tab_label_length` | `max_label_length` | Tab-only cap. `0` = no limit. |
 | `tab_format` | `"{topic}"` | Template; tokens `{topic}` `{agent}` `{workspace}` `{n}` (tab switch number). |
 | `pane_format` | `"{topic}"` | Template; tokens `{topic}` `{agent}` `{workspace}`. |
-| `sync_space_headers` | `true` | Stamp Agents-panel `$space_header` / `$badge_*` / `$group_gap`. |
+| `sync_space_headers` | `true` | Stamp Agents-panel `$space_header` / `$kind_*` / `$stat_*` / `$group_gap`. |
 
 Examples: `tab_format = "{n}· {topic}"` keeps the tab switch number;
 `pane_format = "{agent}: {topic}"` prefixes the agent name.
@@ -90,25 +128,15 @@ maps).
 
 ## Agents panel grouping
 
-The plugin also reports display-only pane tokens so the Herdr Agents list can
-group by Space with kind + status glyphs. That half is **not visible** unless
-`~/.config/herdr/config.toml` includes the rows in
-[`examples/herdr-sidebar.toml`](examples/herdr-sidebar.toml). Merge that file,
-then `herdr server reload-config`.
-
-Per Space, in sidebar order:
+Tokens (stamped by this plugin; rendered by `examples/herdr-sidebar.toml`):
 
 1. `$space_header` — workspace label on its own line (first agent of a Space).
-2. `$kind_{claude|codex|grok|other}` — brand glyph (`✳` / `●` / `Ø`).
-3. `$stat_{blocked|working|done|idle}` — lifecycle glyph (`?` / `:` / `✓` /
-   `○`).
+2. `$kind_{claude|codex|grok|other}` — brand glyph (`✳` / `●` / `Ø`), brand color.
+3. `$stat_{blocked|working|done|idle}` — lifecycle glyph (`?` / `:` / `✓` / `○`),
+   status color.
 4. `$group_gap` — blank row after the last agent of each Space except the last.
 
-Agent rows are not padded. Herdr itself continuation-indents the group leader’s
-agent line (the row under `$space_header`); sibling agents stay flush.
-
-Tokens refresh on the same events as pane/tab names. Self-check:
-`bun test-space-headers.js`.
+Herdr inserts ` · ` between adjacent tokens; that separator is not configurable.
 
 ## License
 
