@@ -143,13 +143,41 @@ function limitWords(str, n) {
   return w.length <= n ? str : `${w.slice(0, n).join(" ")}…`;
 }
 
-// "grok" / "claude" is the agent name, not a topic. Grok's OSC title stays
-// at that name even after it writes generated_title to summary.json.
-function isGenericTopic(topic, agent) {
+// Helper to flatten string or array message content
+function messageText(content) {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) return content.map((c) => (c && c.text) || "").join(" ");
+  return "";
+}
+
+// "grok" / "claude" / "agy" / "codex" is the agent name or launcher label,
+// not a topic. Recognize generic names across agents.
+const GENERIC_TOPICS = new Set([
+  "claude",
+  "claude code",
+  "claude-code",
+  "claude-kong",
+  "codex",
+  "codex-kong",
+  "grok",
+  "antigravity",
+  "agy",
+  "cursor",
+  "opencode",
+  "new tab",
+]);
+
+export function isGenericTopic(topic, agent) {
   const t = String(topic || "").trim().toLowerCase();
   if (!t) return true;
+  if (GENERIC_TOPICS.has(t)) return true;
   const a = String(agent || "").trim().toLowerCase();
-  return t === a || t === `${a}-build`;
+  if (a) {
+    if (t === a || t === `${a}-build` || t === `${a}-kong` || t === `${a} code` || t === `${a}-code`) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function grokSessionTitle(pane) {
@@ -173,6 +201,170 @@ function grokSessionTitle(pane) {
         .trim();
     } catch {
       return "";
+    }
+  }
+  return "";
+}
+
+// ---------------------------------------------------------------------------
+// claude topics
+//
+// Claude Code does not emit OSC titles in Herdr 0.9.1. Extract either the
+// generated aiTitle (ai-title record) or the first human user prompt.
+// ---------------------------------------------------------------------------
+
+const claudeCachePath = join(stateDir, "claude-titles.json");
+const CLAUDE_PROMPT_WORDS = 10;
+const CLAUDE_PROMPT_CHARS = 48;
+
+function claudeSessionPath(sid) {
+  const root = join(homedir(), ".claude", "projects");
+  const direct = join(root, `${sid}.jsonl`);
+  if (existsSync(direct)) return direct;
+  let entries;
+  try {
+    entries = readdirSync(root, { withFileTypes: true });
+  } catch {
+    return "";
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const p = join(root, entry.name, `${sid}.jsonl`);
+    if (existsSync(p)) return p;
+  }
+  return "";
+}
+
+export function claudeSessionTitle(pane) {
+  const sid = pane.agent_session?.value;
+  if (!sid || typeof sid !== "string") return "";
+  const cache = readJson(claudeCachePath, {});
+  const cached = cache[sid];
+  if (cached && typeof cached === "object" && cached.isAiTitle) {
+    return cached.title;
+  }
+  if (typeof cached === "string" && cached) {
+    return cached;
+  }
+
+  const path = claudeSessionPath(sid);
+  if (!path) {
+    return cached && typeof cached === "object" ? cached.title : "";
+  }
+
+  let content;
+  try {
+    content = readFileSync(path, "utf8");
+  } catch {
+    return cached && typeof cached === "object" ? cached.title : "";
+  }
+
+  const lines = content.split("\n");
+  let prompt = "";
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.includes('"aiTitle"')) {
+      try {
+        const rec = JSON.parse(line);
+        if (rec.aiTitle && typeof rec.aiTitle === "string") {
+          const title = rec.aiTitle.trim();
+          if (title) {
+            cache[sid] = { title, isAiTitle: true };
+            try {
+              mkdirSync(dirname(claudeCachePath), { recursive: true });
+              writeFileSync(claudeCachePath, `${JSON.stringify(cache, null, 2)}\n`);
+            } catch {}
+            return title;
+          }
+        }
+      } catch {}
+    }
+    if (!prompt && i < 60 && (line.includes('"type":"user"') || line.includes('"type":"last-prompt"'))) {
+      try {
+        const rec = JSON.parse(line);
+        if (rec.type === "last-prompt" && typeof rec.lastPrompt === "string") {
+          const pr = rec.lastPrompt.trim();
+          if (pr && !pr.startsWith("<")) {
+            prompt = cap(limitWords(normalize(pr), CLAUDE_PROMPT_WORDS), CLAUDE_PROMPT_CHARS);
+          }
+        } else if (rec.type === "user") {
+          const text = messageText(rec.message?.content).trim();
+          if (text && !text.startsWith("<") && !text.startsWith("# AGENTS.md")) {
+            prompt = cap(limitWords(normalize(text), CLAUDE_PROMPT_WORDS), CLAUDE_PROMPT_CHARS);
+          }
+        }
+      } catch {}
+    }
+  }
+
+  if (prompt) {
+    cache[sid] = { title: prompt, isAiTitle: false };
+    try {
+      mkdirSync(dirname(claudeCachePath), { recursive: true });
+      writeFileSync(claudeCachePath, `${JSON.stringify(cache, null, 2)}\n`);
+    } catch {}
+    return prompt;
+  }
+
+  return cached && typeof cached === "object" ? cached.title : "";
+}
+
+// ---------------------------------------------------------------------------
+// antigravity (agy) topics
+//
+// Antigravity CLI transcript is located under:
+// ~/.gemini/antigravity-cli/brain/<sid>/.system_generated/logs/transcript.jsonl
+// ---------------------------------------------------------------------------
+
+const agyCachePath = join(stateDir, "agy-titles.json");
+const AGY_PROMPT_WORDS = 10;
+const AGY_PROMPT_CHARS = 48;
+
+function agySessionPath(sid) {
+  const p = join(homedir(), ".gemini", "antigravity-cli", "brain", sid, ".system_generated", "logs", "transcript.jsonl");
+  return existsSync(p) ? p : "";
+}
+
+export function agySessionTitle(pane) {
+  const sid = pane.agent_session?.value;
+  if (!sid || typeof sid !== "string") return "";
+  const cache = readJson(agyCachePath, {});
+  if (cache[sid]) return cache[sid];
+
+  const path = agySessionPath(sid);
+  if (!path) return "";
+
+  let lines;
+  try {
+    lines = readFileSync(path, "utf8").split("\n", 50);
+  } catch {
+    return "";
+  }
+
+  for (const line of lines) {
+    if (!line) continue;
+    let rec;
+    try {
+      rec = JSON.parse(line);
+    } catch {
+      continue;
+    }
+
+    if (rec.type === "USER_INPUT") {
+      const raw = String(rec.content || "");
+      const match = raw.match(/<USER_REQUEST>([\s\S]*?)(?:<\/USER_REQUEST>|$)/i);
+      let text = (match ? match[1] : raw).trim();
+      if (text) {
+        const title = cap(limitWords(normalize(text), AGY_PROMPT_WORDS), AGY_PROMPT_CHARS);
+        if (title) {
+          cache[sid] = title;
+          try {
+            mkdirSync(dirname(agyCachePath), { recursive: true });
+            writeFileSync(agyCachePath, `${JSON.stringify(cache, null, 2)}\n`);
+          } catch {}
+          return title;
+        }
+      }
     }
   }
   return "";
@@ -238,12 +430,6 @@ function codexRolloutPath(sid) {
   return "";
 }
 
-function messageText(content) {
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) return content.map((c) => (c && c.text) || "").join(" ");
-  return "";
-}
-
 // The first user turn is codex's own AGENTS.md injection; the human's prompt is
 // the next one. Tagged blocks (<environment_context> etc.) are injections too.
 function codexFirstPrompt(sid) {
@@ -280,18 +466,24 @@ function codexSessionTitle(pane) {
   return title;
 }
 
-function topicFor(pane, cfg) {
+export function topicFor(pane, cfg) {
   let topic = limitWords(normalize(pane.terminal_title_stripped), cfg.max_words);
-  const agent = String(pane.agent).toLowerCase();
-  if (isGenericTopic(topic, pane.agent) && agent === "grok") {
-    topic = limitWords(normalize(grokSessionTitle(pane)), cfg.max_words);
+  const agent = String(pane.agent || "").toLowerCase();
+  if (isGenericTopic(topic, agent)) {
+    if (agent === "grok") {
+      topic = limitWords(normalize(grokSessionTitle(pane)), cfg.max_words);
+    } else if (agent === "claude") {
+      topic = limitWords(normalize(claudeSessionTitle(pane)), cfg.max_words);
+    } else if (agent === "agy" || agent === "antigravity") {
+      topic = limitWords(normalize(agySessionTitle(pane)), cfg.max_words);
+    }
   }
   // codex's title is its cwd, which isGenericTopic cannot recognise as generic.
   if (agent === "codex") {
     const derived = limitWords(normalize(codexSessionTitle(pane)), cfg.max_words);
     if (derived) topic = derived;
   }
-  return isGenericTopic(topic, pane.agent) ? "" : topic;
+  return isGenericTopic(topic, agent) ? "" : topic;
 }
 
 // Replace {token}s from `tokens`; unknown tokens are left literal.
@@ -355,9 +547,31 @@ export function decide(prevEntry, live, wanted) {
   return { label: prev.label, pinned: false, write: false };
 }
 
-function isDefaultCodexLabel(pane) {
-  return String(pane.agent).toLowerCase() === "codex"
-    && normalize(pane.label) === normalize(pane.terminal_title_stripped);
+export function isDefaultPaneLabel(pane, wsLabelStr) {
+  if (!pane || !pane.label) return true;
+  const norm = normalize(pane.label);
+  if (!norm) return true;
+  const agent = String(pane.agent || "").toLowerCase();
+  if (isGenericTopic(norm, agent)) return true;
+  if (wsLabelStr && norm.toLowerCase() === normalize(wsLabelStr).toLowerCase()) return true;
+  if (pane.cwd) {
+    const cwdNorm = normalize(pane.cwd).toLowerCase();
+    const lLower = norm.toLowerCase().replace(/…$/, "");
+    if (lLower && (cwdNorm === lLower || cwdNorm.startsWith(lLower))) return true;
+  }
+  if (pane.terminal_title_stripped && norm.toLowerCase() === normalize(pane.terminal_title_stripped).toLowerCase()) {
+    return true;
+  }
+  return false;
+}
+
+export function isDefaultTabLabel(label, agent, expectedOrder) {
+  if (!label) return true;
+  const norm = normalize(label);
+  if (!norm) return true;
+  if (/^\d+$/.test(norm)) return true;
+  if (expectedOrder != null && norm === String(expectedOrder)) return true;
+  return isGenericTopic(norm, agent);
 }
 
 // ---------------------------------------------------------------------------
@@ -407,17 +621,20 @@ function main() {
     for (const p of panes) {
       const meta = info.get(p.pane_id);
       if (!meta) continue;
+      const wsStr = wsLabel(p.workspace_id);
       const wanted = cap(
-        applyFormat(cfg.pane_format, { topic: meta.topic, agent: meta.agent, workspace: wsLabel(p.workspace_id) }),
+        applyFormat(cfg.pane_format, { topic: meta.topic, agent: meta.agent, workspace: wsStr }),
         cfg.max_pane_label_length,
       );
-      const defaultCodexLabel = isDefaultCodexLabel(p);
-      const prior = defaultCodexLabel && state.panes[p.pane_id]?.label === p.label
+      const defaultPane = isDefaultPaneLabel(p, wsStr);
+      const priorEntry = state.panes[p.pane_id];
+      const priorIsDefault = priorEntry && isDefaultPaneLabel({ ...p, label: priorEntry.label }, wsStr);
+      const prior = (defaultPane || priorIsDefault) && (priorEntry?.label === p.label || priorIsDefault)
         ? undefined
-        : state.panes[p.pane_id];
+        : priorEntry;
       const { label, pinned, write } = decide(
         prior,
-        defaultCodexLabel ? "" : p.label,
+        defaultPane ? "" : p.label,
         wanted,
       );
       nextPanes[p.pane_id] = { label, pinned };
@@ -454,22 +671,28 @@ function main() {
       }
       if (!meta) continue;
       const wsId = tabPanes[0].workspace_id;
+      const order = orderInWs.get(tabId);
       const wanted = cap(
         applyFormat(cfg.tab_format, {
           topic: meta.topic,
           agent: meta.agent,
-          n: orderInWs.get(tabId) ?? "",
+          n: order ?? "",
           workspace: wsLabel(wsId),
         }),
         cfg.max_tab_label_length,
       );
-      // herdr labels a fresh tab with its 1-based position ("5"); that is a
-      // default, not a hand-typed name, so decide() must not pin it.
+      // herdr labels a fresh tab with its 1-based position ("5") or launch label ("Claude Code");
+      // those are defaults, not hand-typed names, so decide() must not pin them.
       const liveTab = tabLabel.get(tabId);
-      const isDefault = liveTab === String(orderInWs.get(tabId));
+      const defaultTab = isDefaultTabLabel(liveTab, meta.agent, order);
+      const priorEntry = state.tabs[tabId];
+      const priorIsDefault = priorEntry && isDefaultTabLabel(priorEntry.label, meta.agent, order);
+      const prior = (defaultTab || priorIsDefault) && (priorEntry?.label === liveTab || priorIsDefault)
+        ? undefined
+        : priorEntry;
       const { label, pinned, write } = decide(
-        isDefault ? undefined : state.tabs[tabId],
-        isDefault ? "" : liveTab,
+        prior,
+        defaultTab ? "" : liveTab,
         wanted,
       );
       nextTabs[tabId] = { label, pinned };
@@ -531,6 +754,8 @@ export function kindGlyph(agent) {
     case "claude": return "✳";
     case "codex": return "●";
     case "grok": return "Ø";
+    case "agy":
+    case "antigravity": return "▲";
     case "cursor": return "▸";
     case "opencode": return "◇";
     default: return "·";

@@ -12,8 +12,11 @@ import {
 assert.equal(kindGlyph("claude"), "✳");
 assert.equal(kindGlyph("codex"), "●");
 assert.equal(kindGlyph("grok"), "Ø");
+assert.equal(kindGlyph("agy"), "▲");
+assert.equal(kindGlyph("antigravity"), "▲");
 assert.equal(kindKey("claude"), "claude");
 assert.equal(kindKey("cursor"), "other");
+assert.equal(kindKey("agy"), "other");
 assert.equal(statusGlyph("blocked"), "?");
 assert.equal(statusGlyph("working"), ":");
 assert.equal(statusGlyph("done"), "✓");

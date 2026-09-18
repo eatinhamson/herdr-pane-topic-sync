@@ -16,14 +16,19 @@ Vault Keeper
 
 On every relevant herdr event it:
 
-1. **Renames each agent pane** to its live topic — the `terminal_title_stripped`
-   that Claude Code (and other agents) emit via the terminal title. Grok's OSC
-   title stays `grok`, so a Grok pane falls back to `generated_title` in that
-   session's `summary.json`. With `show_agent_labels_on_pane_borders = true` in
-   your herdr config, that topic shows right on the pane border.
+1. **Renames each agent pane** to its live topic:
+   - **Claude Code**: derives topic from the session's generated `aiTitle` (or first human prompt fallback) in `~/.claude/projects/*/<sid>.jsonl` when terminal titles are absent.
+   - **Antigravity (`agy`)**: derives topic from `<USER_REQUEST>` prompt in `~/.gemini/antigravity-cli/brain/<sid>/.system_generated/logs/transcript.jsonl`.
+   - **Grok**: falls back to `generated_title` in `~/.grok/sessions/.../summary.json` (since Grok's OSC title stays `grok`).
+   - **Codex**: derives topic from rollout summary slugs or initial prompts in `~/.codex/sessions/`.
+   - **Other agents**: uses `terminal_title_stripped`.
+   With `show_agent_labels_on_pane_borders = true` in your herdr config, that topic shows right on the pane border.
 2. **Renames each tab** to the topic of its **first pane** (top-left, reading
    order). If the first pane is a plain shell, the first *agent* pane's topic is
-   used instead, so a tab is never named after a shell prompt.
+   used instead, so a tab is never named after a shell prompt. Default launcher
+   labels (`Claude Code`, `Antigravity`, `agy`, etc.) and numeric tab numbers
+   are recognized as defaults rather than manual pins, updating smoothly to the live
+   topic.
 3. **Stamps Agents-panel tokens** (`$space_header`, `$kind_*`, `$stat_*`,
    `$group_gap`) when `sync_space_headers = true` (default).
 
@@ -131,7 +136,7 @@ maps).
 Tokens (stamped by this plugin; rendered by `examples/herdr-sidebar.toml`):
 
 1. `$space_header` — workspace label on its own line (first agent of a Space).
-2. `$kind_{claude|codex|grok|other}` — brand glyph (`✳` / `●` / `Ø`), brand color.
+2. `$kind_{claude|codex|grok|other}` — brand glyph (`✳` / `●` / `Ø` / `▲` for Antigravity), brand color.
 3. `$stat_{blocked|working|done|idle}` — lifecycle glyph (`?` / `:` / `✓` / `○`),
    status color.
 4. `$group_gap` — blank row after the last agent of each Space except the last.
