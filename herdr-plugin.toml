@@ -1,6 +1,6 @@
 id = "dan.pane-topic-sync"
 name = "Pane Topic Sync"
-version = "0.3.0"
+version = "0.4.0"
 min_herdr_version = "0.7.0"
 description = "Rename agent panes/tabs to live topics, and stamp Agents-panel Space headers with kind/status glyphs."
 platforms = ["macos", "linux", "windows"]
@@ -20,6 +20,10 @@ command = ["bun", "sync-labels.js"]
 
 [[events]]
 on = "tab.focused"
+command = ["bun", "sync-labels.js"]
+
+[[events]]
+on = "tab.closed"
 command = ["bun", "sync-labels.js"]
 
 [[events]]

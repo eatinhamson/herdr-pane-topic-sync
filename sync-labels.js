@@ -23,6 +23,9 @@ const herdr = process.env.HERDR_BIN_PATH || "herdr";
 const stateDir = process.env.HERDR_PLUGIN_STATE_DIR || tmpdir();
 const configDir = process.env.HERDR_PLUGIN_CONFIG_DIR || "";
 const statePath = join(stateDir, "pane-topic-sync-state.json");
+const closedTabsPath = process.env.HERDR_CLOSED_TABS_FILE
+  || join(homedir(), ".local", "state", "herdr", "recently-closed-tabs.jsonl");
+const CLOSED_TAB_HISTORY_LIMIT = 100;
 
 // ---------------------------------------------------------------------------
 // Config
@@ -503,18 +506,86 @@ function normalizeEntry(v) {
   return typeof v === "string" ? { label: v, pinned: false } : v;
 }
 
-function loadState() {
+export function loadState() {
   try {
     const s = JSON.parse(readFileSync(statePath, "utf8"));
-    return { panes: s.panes || {}, tabs: s.tabs || {} };
+    return { panes: s.panes || {}, tabs: s.tabs || {}, tab_sessions: s.tab_sessions || {} };
   } catch {
-    return { panes: {}, tabs: {} };
+    return { panes: {}, tabs: {}, tab_sessions: {} };
   }
 }
 
-function saveState(state) {
+export function saveState(state) {
   mkdirSync(dirname(statePath), { recursive: true });
   writeFileSync(statePath, `${JSON.stringify(state, null, 2)}\n`);
+}
+
+const MAX_SESSIONS_PER_TAB = 8;
+
+const paneSession = (pane) => ({
+  agent: String(pane.agent).toLowerCase(),
+  sid: pane.agent_session.value,
+  cwd: pane.cwd || pane.foreground_cwd || "",
+  title: pane.label || pane.terminal_title_stripped || "",
+});
+
+// Per live tab, every agent session seen in it (oldest first). Sessions stay
+// after their agent exits, so a tab closed after `/exit` still has them.
+export function mergeTabSessions(prev, panes, liveTabIds) {
+  const next = {};
+  for (const tabId of liveTabIds) {
+    if (Array.isArray(prev?.[tabId])) next[tabId] = [...prev[tabId]];
+  }
+  for (const pane of panes) {
+    if (!pane.tab_id || !pane.agent || !pane.agent_session?.value || !liveTabIds.includes(pane.tab_id)) continue;
+    const sessions = (next[pane.tab_id] ||= []);
+    const current = paneSession(pane);
+    const at = sessions.findIndex((s) => s.agent === current.agent && s.sid === current.sid);
+    if (at >= 0) sessions[at] = current;
+    else sessions.push(current);
+  }
+  for (const tabId of Object.keys(next)) {
+    next[tabId] = next[tabId].slice(-MAX_SESSIONS_PER_TAB);
+    if (next[tabId].length === 0) delete next[tabId];
+  }
+  return next;
+}
+
+// Tabs in the saved snapshot that are no longer live. Herdr emits tab.closed
+// only for API closes, not when a tab's last pane closes, so closures are
+// found by this diff on every run. Sessions still live in another pane (a
+// moved pane, or tabs renumbered by a server restart) are not closures.
+export function closedTabRecords(prev, liveTabIds, panes, now = new Date()) {
+  const liveSids = new Set(panes.map((p) => p.agent_session?.value).filter(Boolean));
+  const records = [];
+  for (const [tabId, sessions] of Object.entries(prev || {})) {
+    if (liveTabIds.includes(tabId) || !Array.isArray(sessions)) continue;
+    const closed = sessions.filter((s) => s?.sid && !liveSids.has(s.sid));
+    if (closed.length === 0) continue;
+    records.push({
+      closed_at: now.toISOString(),
+      workspace_id: tabId.split(":")[0],
+      tab_id: tabId,
+      sessions: closed,
+    });
+  }
+  return records;
+}
+
+// Overlapping plugin runs can see the same closure; skip exact repeats.
+function appendClosedTabs(records) {
+  if (records.length === 0) return;
+  mkdirSync(dirname(closedTabsPath), { recursive: true });
+  let lines = [];
+  try { lines = readFileSync(closedTabsPath, "utf8").split("\n").filter(Boolean); } catch {}
+  const key = (r) => `${r.tab_id}|${r.sessions.map((s) => s.sid).join(",")}`;
+  const seen = new Set(lines.slice(-CLOSED_TAB_HISTORY_LIMIT).map((line) => {
+    try { return key(JSON.parse(line)); } catch { return ""; }
+  }));
+  for (const record of records) {
+    if (!seen.has(key(record))) lines.push(JSON.stringify(record));
+  }
+  writeFileSync(closedTabsPath, `${lines.slice(-CLOSED_TAB_HISTORY_LIMIT).join("\n")}\n`);
 }
 
 // Decide whether to (re)write a label, given the state entry we last saved
@@ -580,8 +651,19 @@ export function isDefaultTabLabel(label, agent, expectedOrder) {
 
 function main() {
   const cfg = loadConfig();
-  const panes = json(["pane", "list"])?.result?.panes ?? [];
-  const tabs = json(["tab", "list"])?.result?.tabs ?? [];
+  const paneList = json(["pane", "list"])?.result?.panes;
+  const tabList = json(["tab", "list"])?.result?.tabs;
+  const panes = paneList ?? [];
+  const tabs = tabList ?? [];
+  const state = loadState();
+  // Without both live lists every saved tab would look closed; keep the old
+  // snapshot and record nothing this run.
+  let tabSessions = state.tab_sessions;
+  if (paneList && tabList) {
+    const liveTabIds = tabs.map((t) => t.tab_id);
+    appendClosedTabs(closedTabRecords(state.tab_sessions, liveTabIds, panes));
+    tabSessions = mergeTabSessions(state.tab_sessions, panes, liveTabIds);
+  }
 
   // paneId -> { topic, agent } for agent panes that have a real topic.
   const info = new Map();
@@ -613,7 +695,6 @@ function main() {
 
   let paneWrites = 0;
   let tabWrites = 0;
-  const state = loadState();
   const nextPanes = {};
 
   // 1) Panes.
@@ -708,7 +789,12 @@ function main() {
   const headerWrites = cfg.sync_space_headers
     ? syncSpaceHeaders(panes, state.space_headers || {})
     : { next: state.space_headers || {}, writes: 0 };
-  saveState({ panes: nextPanes, tabs: nextTabs, space_headers: headerWrites.next });
+  saveState({
+    panes: nextPanes,
+    tabs: nextTabs,
+    space_headers: headerWrites.next,
+    tab_sessions: tabSessions,
+  });
   console.log(
     `synced: ${paneWrites} pane rename(s), ${tabWrites} tab rename(s), ` +
     `${headerWrites.writes} space header(s) ` +

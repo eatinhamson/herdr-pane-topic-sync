@@ -31,18 +31,32 @@ On every relevant herdr event it:
    topic.
 3. **Stamps Agents-panel tokens** (`$space_header`, `$kind_*`, `$stat_*`,
    `$group_gap`) when `sync_space_headers = true` (default).
+4. **Records recently closed tabs** for `herdr-resume`. Every run compares
+   the saved per-tab session snapshot with `herdr tab list`; each tab that
+   has gone is stored with the agent sessions seen in it in
+   `~/.local/state/herdr/recently-closed-tabs.jsonl`. The file retains the
+   latest 100 tab closures; `herdr-resume` promotes sessions from the latest
+   five closed tabs ahead of its normal history.
 
 Plain (non-agent) shell panes are left untouched.
 
 ## How it works
 
-- Subscribes to `pane.*` / `tab.focused` / `workspace.focused` events (see
+- Subscribes to `pane.*` / `tab.focused` / `tab.closed` /
+  `workspace.focused` events (see
   `herdr-plugin.toml`). The key trigger is `pane.agent_status_changed`, which
   fires when an agent flips idle↔working — i.e. when it sets a fresh topic.
 - Deliberately does **not** subscribe to `*.renamed` events, so its own renames
   can't feed back into a loop.
 - Gates all writes through a state file (`$HERDR_PLUGIN_STATE_DIR/pane-topic-sync-state.json`),
   so `rename` / metadata writes only happen when values change — no churn.
+- Retains a per-tab session snapshot in that plugin state (up to 8 sessions
+  per tab, kept after an agent exits). Closures are found by diffing it
+  against the live tab list, not from `tab.closed`: Herdr sends that event
+  only for API closes, not when a tab's last pane closes. Sessions still live
+  in another pane are not recorded, and a run whose `pane list` or `tab list`
+  call fails records nothing. Closures before this recorder was activated
+  cannot be reconstructed.
 - "First pane" is resolved from `herdr pane layout` rect coordinates, sorted by
   `(y, x)`, so it's the visually top-left pane regardless of split order.
 

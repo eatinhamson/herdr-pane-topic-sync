@@ -103,3 +103,39 @@ assert.strictEqual(
 assert.strictEqual(isDefaultPaneLabel({ label: "Custom Task", agent: "claude" }, "Vault Keeper"), false);
 console.log("isDefaultPaneLabel(): all cases pass");
 
+// Closed-tab recorder. Herdr does not emit tab.closed when a tab's last pane
+// closes, so closures are found by diffing the saved snapshot against the
+// live tab list on every run.
+import { closedTabRecords, loadState, mergeTabSessions, saveState } from "./sync-labels.js";
+
+const pane = (tab, agent, sid, title = sid) =>
+  ({ tab_id: tab, agent, agent_session: { value: sid }, cwd: `/${sid}`, label: title });
+const closedAt = new Date("2026-09-28T12:00:00Z");
+
+// The snapshot survives a state save/load round trip.
+saveState({ panes: {}, tabs: {}, tab_sessions: { "w1:t1": [{ agent: "codex", sid: "a" }] } });
+assert.deepStrictEqual(loadState().tab_sessions, { "w1:t1": [{ agent: "codex", sid: "a" }] });
+
+// Sessions accumulate per live tab (an agent that exits before its tab closes
+// is kept), shell panes are ignored, and closed tabs drop out of the snapshot.
+let snap = mergeTabSessions({}, [pane("w1:t1", "codex", "a"), pane("w1:t2", "", "")], ["w1:t1", "w1:t2"]);
+assert.deepStrictEqual(Object.keys(snap), ["w1:t1"]);
+snap = mergeTabSessions(snap, [pane("w1:t1", "claude", "b")], ["w1:t1"]);
+assert.deepStrictEqual(snap["w1:t1"].map((s) => s.sid), ["a", "b"]);
+assert.deepStrictEqual(mergeTabSessions(snap, [], []), {});
+
+// A tab missing from the live list is recorded with its sessions in order.
+assert.deepStrictEqual(closedTabRecords(snap, [], [], closedAt), [{
+  closed_at: "2026-09-28T12:00:00.000Z",
+  workspace_id: "w1",
+  tab_id: "w1:t1",
+  sessions: snap["w1:t1"],
+}]);
+// Still-open tab: nothing recorded.
+assert.deepStrictEqual(closedTabRecords(snap, ["w1:t1"], [], closedAt), []);
+// Tab gone but its sessions are live elsewhere (moved pane, renumbered tab
+// after a server restart): nothing recorded.
+assert.deepStrictEqual(closedTabRecords(snap, [], [pane("w1:t9", "codex", "a"), pane("w1:t9", "claude", "b")], closedAt), []);
+// Only the sessions that are no longer live are recorded.
+assert.deepStrictEqual(closedTabRecords(snap, [], [pane("w1:t9", "codex", "a")], closedAt)[0].sessions.map((s) => s.sid), ["b"]);
+console.log("closed-tab recorder: all cases pass");
