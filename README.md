@@ -82,17 +82,31 @@ herdr plugin action invoke sync --plugin dan.pane-topic-sync
 
 ### 2. Flush headings (recommended)
 
-Stock Herdr 0.8.2 continuation-indents every Agents-panel row after the first
-line of an entry, so a Space heading on its own line indents the first agent
-under it. This repo ships a tiny upstream patch that removes that prefix:
+Stock Herdr continuation-indents every Agents-panel row after the first line of
+an entry, so a Space heading on its own line indents the first agent under it,
+and it joins tokens with ` · `. This repo ships a small patch per Herdr release
+family that removes both:
 
 ```sh
-./scripts/install-flush-herdr.sh
-# then point PATH herdr at the build, e.g.:
-ln -sf ~/.local/bin/herdr-flush-agents /opt/homebrew/bin/herdr
+./scripts/install-flush-herdr.sh --check             # prove the patch applies to the latest stable tag
+./scripts/install-flush-herdr.sh --link --handoff    # build, install, relink PATH herdr, hand live panes over
 ```
 
-Patch: [`patches/herdr-0.8.2-flush-agent-rows.patch`](patches/herdr-0.8.2-flush-agent-rows.patch).
+The script builds in a separate git worktree (your Herdr checkout is never
+modified) and installs `~/.local/bin/herdr-flush-agents`, keeping the previous
+version as `herdr-flush-agents.<ver>`. `--handoff` moves the running server to
+the new build without closing panes; the client detaches, so re-run `herdr`.
+
+**This is the only supported way to update Herdr.** `herdr update`,
+`brew upgrade herdr` and `brew link --overwrite herdr` all install stock and
+silently drop the patch (`brew pin herdr` blocks the brew paths). Guards:
+`healthcheck.sh` fails when `herdr` on PATH is no longer the flush build, and
+the weekly update audit reports newer stable releases without installing them.
+
+Patches: [`patches/herdr-0.9-flush-agent-rows.patch`](patches/herdr-0.9-flush-agent-rows.patch)
+(0.9.x) and [`patches/herdr-0.8.2-flush-agent-rows.patch`](patches/herdr-0.8.2-flush-agent-rows.patch)
+(0.8.2, historical).
+
 Without it, headings still work; the first agent under each heading sits one
 step in.
 

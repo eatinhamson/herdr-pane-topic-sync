@@ -1,0 +1,55 @@
+# Herdr flush-agent-rows patch for the 0.9.x family
+# (src/client/shell/agent_sidebar.rs + src/ui/sidebar/tokens.rs).
+# Removes the renderer-owned continuation indent on Agents-panel rows and joins
+# adjacent sidebar tokens with a single space instead of " · ".
+# Verified: `git apply --check` is clean on v0.9.0 and v0.9.3.
+# If a later release breaks it, port it by hand and save it as
+# patches/herdr-<ver>-flush-agent-rows.patch; scripts/install-flush-herdr.sh
+# tries the newest patch first and falls back to older ones.
+diff --git a/src/client/shell/agent_sidebar.rs b/src/client/shell/agent_sidebar.rs
+index d6fe3352..2a33eabe 100644
+--- a/src/client/shell/agent_sidebar.rs
++++ b/src/client/shell/agent_sidebar.rs
+@@ -355,8 +355,8 @@ pub(super) fn render_agent_row(
+         row.rows.clone()
+     };
+     for (index, tokens) in rows.iter().take(rect.height as usize).enumerate() {
+-        let indent = if index == 0 { 1 } else { 3 };
+-        let mut spans = vec![ratatui::text::Span::raw(" ".repeat(indent))];
++        // no-dots patch: no leading indent, rows start at column 0.
++        let mut spans = Vec::new();
+         spans.extend(crate::ui::resolved_token_spans(
+             tokens,
+             icon,
+@@ -365,7 +365,7 @@ pub(super) fn render_agent_row(
+             secondary,
+             secondary,
+             palette,
+-            rect.width.saturating_sub(indent as u16) as usize,
++            rect.width as usize,
+         ));
+         Paragraph::new(Line::from(spans)).style(row_style).render(
+             Rect::new(rect.x, rect.y + index as u16, rect.width, 1),
+diff --git a/src/ui/sidebar/tokens.rs b/src/ui/sidebar/tokens.rs
+index d9cefe99..6f3260f7 100644
+--- a/src/ui/sidebar/tokens.rs
++++ b/src/ui/sidebar/tokens.rs
+@@ -177,14 +177,10 @@ pub(crate) fn space_rows(
+         .collect()
+ }
+ 
+-pub(crate) fn separator(previous: &ResolvedToken, current: &ResolvedToken) -> &'static str {
+-    if matches!(previous.kind, ResolvedTokenKind::StateIcon)
+-        || matches!(current.kind, ResolvedTokenKind::GitStatus { .. })
+-    {
+-        " "
+-    } else {
+-        " · "
+-    }
++pub(crate) fn separator(_previous: &ResolvedToken, _current: &ResolvedToken) -> &'static str {
++    // Single space between all adjacent tokens (no middot). Keeps Agents-panel
++    // rows compact: kind status title instead of kind · status · title.
++    " "
+ }
+ 
+ #[cfg(test)]
