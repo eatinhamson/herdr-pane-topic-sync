@@ -42,8 +42,10 @@ panes=$(herdr pane list 2>/dev/null) || fail "herdr pane list failed"
 tabs=$(herdr tab list 2>/dev/null) || fail "herdr tab list failed"
 jq -e '.result.tabs | type == "array" and all(.[]; (.tab_id | type) == "string")' <<<"$tabs" >/dev/null \
   || fail "herdr tab list no longer returns .result.tabs[].tab_id"
+# pi panes carry no agent_session (herdr does not report one); every other agent must.
 jq -e '.result.panes | type == "array"
-       and all(.[] | select(.agent); (.tab_id | type) == "string" and (.agent_session.value | type) == "string")' \
+       and all(.[] | select(.agent); (.tab_id | type) == "string"
+               and (.agent == "pi" or (.agent_session.value | type) == "string"))' \
   <<<"$panes" >/dev/null \
   || fail "herdr pane list agent panes lack tab_id or agent_session.value"
 
