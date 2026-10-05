@@ -513,11 +513,39 @@ function applyFormat(fmt, tokens) {
 // currently pinned (a human renamed it out from under us). Old state files
 // stored a bare string (no pin tracking); normalizeEntry migrates those in
 // place as "not pinned".
+//
+// Each entry also keeps `seen`, a short history of labels we wrote, newest
+// first. A live label still in that history is ours, not a hand rename: copies
+// of this script run concurrently (workspace/tab/pane focus events fire
+// together), so a slower run can persist a view taken before a faster one
+// renamed. With only the last label, that stale entry looked like a manual
+// rename and pinned the pane at an old topic. (Ported from upstream v0.3.0.)
 // ---------------------------------------------------------------------------
+
+const HISTORY_LIMIT = 5;
 
 function normalizeEntry(v) {
   if (v === undefined) return undefined;
   return typeof v === "string" ? { label: v, pinned: false } : v;
+}
+
+// New `seen` list for an entry about to record `label`: newest first, no
+// duplicates, capped.
+export function remember(entry, label) {
+  const prior = Array.isArray(entry?.seen) ? entry.seen : entry?.label ? [entry.label] : [];
+  return [label, ...prior.filter((l) => l !== label)].slice(0, HISTORY_LIMIT);
+}
+
+// Keep entries for ids still alive, including panes/tabs we skip this run
+// because they are not agent panes right now. Dropping those lost their
+// history, so the agent returning on a new topic found a label it no longer
+// recognized as its own and pinned it. Ids gone from the live list are pruned.
+export function carryForward(section, liveIds) {
+  const out = {};
+  for (const [id, entry] of Object.entries(section || {})) {
+    if (liveIds.has(id)) out[id] = entry;
+  }
+  return out;
 }
 
 export function loadState() {
@@ -618,6 +646,7 @@ export function decide(prevEntry, live, wanted) {
 
   if (prev === undefined) {
     if (!live) return { label: wanted, pinned: false, write: true };
+    if (live === wanted) return { label: wanted, pinned: false, write: false }; // reads as ours -> adopt
     return { label: live, pinned: true, write: false }; // unknown provenance -> don't clobber
   }
 
@@ -627,9 +656,11 @@ export function decide(prevEntry, live, wanted) {
     return { label: live, pinned: true, write: false }; // renamed again -> stay pinned, new value
   }
 
-  if (live !== prev.label) return { label: live, pinned: true, write: false }; // renamed by hand -> pin
+  if (live !== prev.label && !prev.seen?.includes(live)) {
+    return { label: live, pinned: true, write: false }; // renamed by hand -> pin
+  }
   if (wanted !== live) return { label: wanted, pinned: false, write: true };
-  return { label: prev.label, pinned: false, write: false };
+  return { label: live, pinned: false, write: false };
 }
 
 export function isDefaultPaneLabel(pane, wsLabelStr) {
@@ -709,7 +740,7 @@ function main() {
 
   let paneWrites = 0;
   let tabWrites = 0;
-  const nextPanes = {};
+  const nextPanes = carryForward(state.panes, new Set(panes.map((p) => p.pane_id)));
 
   // 1) Panes.
   if (cfg.sync_panes) {
@@ -732,15 +763,12 @@ function main() {
         defaultPane ? "" : p.label,
         wanted,
       );
-      nextPanes[p.pane_id] = { label, pinned };
+      nextPanes[p.pane_id] = { label, pinned, seen: pinned ? priorEntry?.seen : remember(priorEntry, label) };
       if (write) {
         run(["pane", "rename", p.pane_id, label]);
         paneWrites++;
       }
     }
-  } else {
-    // Preserve prior state so toggling sync_panes back on doesn't re-churn.
-    Object.assign(nextPanes, state.panes);
   }
 
   // 2) Tabs. Tab switch number = 1-based position within its workspace.
@@ -752,7 +780,7 @@ function main() {
     orderInWs.set(t.tab_id, c);
   }
 
-  const nextTabs = {};
+  const nextTabs = carryForward(state.tabs, new Set(tabs.map((t) => t.tab_id)));
   if (cfg.sync_tabs) {
     const tabLabel = new Map(tabs.map((t) => [t.tab_id, t.label]));
     for (const [tabId, tabPanes] of byTab) {
@@ -790,14 +818,12 @@ function main() {
         defaultTab ? "" : liveTab,
         wanted,
       );
-      nextTabs[tabId] = { label, pinned };
+      nextTabs[tabId] = { label, pinned, seen: pinned ? priorEntry?.seen : remember(priorEntry, label) };
       if (write) {
         run(["tab", "rename", tabId, label]);
         tabWrites++;
       }
     }
-  } else {
-    Object.assign(nextTabs, state.tabs);
   }
 
   const headerWrites = cfg.sync_space_headers

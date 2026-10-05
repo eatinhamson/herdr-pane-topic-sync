@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // Self-check for decide()'s pin/refresh logic. Run: bun test-decide.js
 import assert from "node:assert";
-import { decide } from "./sync-labels.js";
+import { decide, carryForward, remember } from "./sync-labels.js";
 
 // Fresh id, nothing there yet -> safe to write the auto label.
 assert.deepStrictEqual(decide(undefined, undefined, "wanted"), { label: "wanted", pinned: false, write: true });
@@ -51,6 +51,36 @@ assert.deepStrictEqual(
 
 // Old (pre-pin-tracking) state file stored a bare string -> migrates as unpinned.
 assert.deepStrictEqual(decide("old-topic", "old-topic", "new-topic"), { label: "new-topic", pinned: false, write: true });
+
+// Label history (ported from upstream v0.3.0): a live label we wrote earlier
+// is still ours. A slower concurrent run can persist a stale `label`, and
+// that must not read as a hand rename.
+assert.deepStrictEqual(
+  decide({ label: "B", pinned: false, seen: ["B", "A"] }, "A", "C"),
+  { label: "C", pinned: false, write: true },
+);
+assert.deepStrictEqual(
+  decide({ label: "B", pinned: false, seen: ["B", "A"] }, "A", "A"),
+  { label: "A", pinned: false, write: false },
+);
+// A name outside the history is still a hand rename.
+assert.deepStrictEqual(
+  decide({ label: "B", pinned: false, seen: ["B", "A"] }, "Mine", "C"),
+  { label: "Mine", pinned: true, write: false },
+);
+// Self-heal: no prior entry, but the live label is exactly what we would write.
+assert.deepStrictEqual(decide(undefined, "wanted", "wanted"), { label: "wanted", pinned: false, write: false });
+
+// carryForward keeps entries for ids still alive (a pane that stopped being an
+// agent pane for a run keeps its history); closed ids are pruned.
+assert.deepStrictEqual(
+  carryForward({ p1: { label: "a", pinned: false }, p2: { label: "b", pinned: true } }, new Set(["p1"])),
+  { p1: { label: "a", pinned: false } },
+);
+assert.deepStrictEqual(remember({ label: "B", pinned: false, seen: ["B", "A"] }, "C"), ["C", "B", "A"]);
+assert.deepStrictEqual(remember({ label: "B", pinned: false, seen: ["B", "A"] }, "A"), ["A", "B"]);
+assert.strictEqual(remember(undefined, "x").length, 1);
+assert.strictEqual(remember({ seen: ["1", "2", "3", "4", "5"] }, "6").length, 5);
 
 console.log("decide(): all cases pass");
 
