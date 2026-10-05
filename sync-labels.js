@@ -470,9 +470,22 @@ function codexSessionTitle(pane) {
   return title;
 }
 
+// pi titles its terminal "π - [session name - ]<cwd basename>". Strip the
+// brand prefix and cwd suffix so only a real session name survives; a bare cwd
+// basename is not a topic. Done here (not by patching pi) so it survives updates.
+function piTopic(pane) {
+  const cwd = String(pane.cwd || pane.foreground_cwd || "").replace(/\/+$/, "");
+  const base = cwd.slice(cwd.lastIndexOf("/") + 1);
+  let t = normalize(pane.terminal_title_stripped).replace(/^π\s*-\s*/, "");
+  if (base && t === base) return "";
+  if (base && t.endsWith(` - ${base}`)) t = t.slice(0, -(base.length + 3));
+  return t.trim();
+}
+
 export function topicFor(pane, cfg) {
   let topic = limitWords(normalize(pane.terminal_title_stripped), cfg.max_words);
   const agent = String(pane.agent || "").toLowerCase();
+  if (agent === "pi") topic = limitWords(piTopic(pane), cfg.max_words);
   if (isGenericTopic(topic, agent)) {
     if (agent === "grok") {
       topic = limitWords(normalize(grokSessionTitle(pane)), cfg.max_words);
