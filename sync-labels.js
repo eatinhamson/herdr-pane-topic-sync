@@ -167,6 +167,7 @@ const GENERIC_TOPICS = new Set([
   "agy",
   "cursor",
   "opencode",
+  "pi",
   "new tab",
 ]);
 
@@ -844,6 +845,7 @@ export function kindGlyph(agent) {
     case "antigravity": return "▲";
     case "cursor": return "▸";
     case "opencode": return "◇";
+    case "pi": return "π";
     default: return "·";
   }
 }
