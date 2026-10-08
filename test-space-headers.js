@@ -17,6 +17,16 @@ assert.equal(kindGlyph("antigravity"), "▲");
 assert.equal(kindKey("claude"), "claude");
 assert.equal(kindKey("cursor"), "other");
 assert.equal(kindKey("agy"), "other");
+// A pane parked by herdr-lifecycle reports agent "parked": its own glyph and token,
+// so the sidebar can dim it, and it never takes a live agent's colour.
+assert.equal(kindKey("parked"), "parked");
+assert.equal(kindGlyph("parked"), "‖");
+{
+  const wanted = spaceHeaderWanted({ label: "HMK", index: 1, groupSize: 2, lastGroup: true, agent: "parked", agent_status: "idle", seen: true });
+  assert.equal(wanted.kind_parked, "‖");
+  assert.equal(wanted.kind_other, "");
+  assert.equal(wanted.kind_claude, "");
+}
 assert.equal(statusGlyph("blocked"), "?");
 assert.equal(statusGlyph("working"), ":");
 assert.equal(statusGlyph("done"), "✓");

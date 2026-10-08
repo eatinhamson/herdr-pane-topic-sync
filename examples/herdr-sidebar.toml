@@ -13,6 +13,7 @@ rows = [
     { token = "$kind_claude", fg = "#fab387", bold = true, dim = false },
     { token = "$kind_codex", fg = "#cba6f7", bold = true, dim = false },
     { token = "$kind_grok", fg = "#94e2d5", bold = true, dim = false },
+    { token = "$kind_parked", fg = "#6c7086", dim = false },
     { token = "$kind_other", fg = "#cdd6f4", bold = true, dim = false },
     { token = "$stat_blocked", fg = "#f38ba8", bold = true, dim = false },
     { token = "$stat_working", fg = "#f9e2af", bold = true, dim = false },

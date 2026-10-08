@@ -713,7 +713,8 @@ function main() {
   // paneId -> { topic, agent } for agent panes that have a real topic.
   const info = new Map();
   for (const p of panes) {
-    if (!p.agent) continue;
+    // "parked" is herdr-lifecycle's holder, not an agent: its "Parked: …" label stays.
+    if (!p.agent || p.agent === "parked") continue;
     const topic = topicFor(p, cfg);
     if (topic) info.set(p.pane_id, { topic, agent: p.agent });
   }
@@ -853,7 +854,7 @@ function main() {
 // row 0 and stay flush with the heading text.
 const SPACE_HEADER_SOURCE = "plugin:dan.pane-topic-sync";
 const GAP = "\u2800";
-const KIND_KEYS = ["kind_claude", "kind_codex", "kind_grok", "kind_other"];
+const KIND_KEYS = ["kind_claude", "kind_codex", "kind_grok", "kind_parked", "kind_other"];
 const STAT_KEYS = ["stat_blocked", "stat_working", "stat_done", "stat_idle"];
 const LEGACY_KEYS = ["badge_blocked", "badge_working", "badge_done", "badge_idle"];
 const TOKEN_KEYS = ["space_header", "group_gap", ...KIND_KEYS, ...STAT_KEYS, ...LEGACY_KEYS];
@@ -871,6 +872,7 @@ export function kindKey(agent) {
     case "claude": return "claude";
     case "codex": return "codex";
     case "grok": return "grok";
+    case "parked": return "parked";
     default: return "other";
   }
 }
@@ -885,6 +887,7 @@ export function kindGlyph(agent) {
     case "cursor": return "▸";
     case "opencode": return "◇";
     case "pi": return "π";
+    case "parked": return "‖";
     default: return "·";
   }
 }

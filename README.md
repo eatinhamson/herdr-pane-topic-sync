@@ -164,7 +164,7 @@ maps).
 Tokens (stamped by this plugin; rendered by `examples/herdr-sidebar.toml`):
 
 1. `$space_header` — workspace label on its own line (first agent of a Space).
-2. `$kind_{claude|codex|grok|other}` — brand glyph (`✳` / `●` / `Ø` / `▲` for Antigravity), brand color.
+2. `$kind_{claude|codex|grok|parked|other}` — brand glyph (`✳` / `●` / `Ø` / `▲` for Antigravity), brand color. `parked` (`‖`, grey) is a pane held by `herdr-lifecycle`; its `Parked: …` label is never renamed.
 3. `$stat_{blocked|working|done|idle}` — lifecycle glyph (`?` / `:` / `✓` / `○`),
    status color.
 4. `$group_gap` — blank row after the last agent of each Space except the last.
