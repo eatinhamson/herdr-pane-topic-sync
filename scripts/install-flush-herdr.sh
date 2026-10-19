@@ -15,6 +15,8 @@
 # Env: HERDR_SRC       git checkout used as the object store (default ~/Development/herdr)
 #      HERDR_WORKTREE  build tree (default <HERDR_SRC>-<VERSION>)
 #      HERDR_FLUSH_PREFIX, HERDR_LINK
+#      HERDR_RESTART_CMD  with --handoff: restart each Claude pane with this command
+#                         ({pane} = pane id), five panes at a time, 45 s between groups
 # HERDR_SRC's working tree is never modified: builds happen in a separate git worktree.
 # Needs git, curl, jq, cargo, and the Zig that upstream's build.rs asks for
 # (0.9.x wants Zig 0.16: `brew install zig`; set ZIG=/path/to/zig to override).
@@ -111,6 +113,10 @@ fi
 if (( HANDOFF )); then
   echo "handing the running server to $VER (panes are kept; your client will detach)"
   "$LINK" server live-handoff --expected-version "$VER"
+  # Pane restarts, when the operator wants them, go five at a time (T-7 F6).
+  if [[ -n "${HERDR_RESTART_CMD:-}" ]]; then
+    "$ROOT/scripts/restart-panes-staggered.sh" --cmd "$HERDR_RESTART_CMD" --run
+  fi
   echo "re-run \`herdr\` in your terminal to reattach"
 else
   echo "next: herdr server live-handoff --expected-version $VER   (then re-run herdr)"

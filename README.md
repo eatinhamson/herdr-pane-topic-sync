@@ -115,6 +115,7 @@ step in.
 ```sh
 bun test-decide.js
 bun test-space-headers.js
+./test-restart-staggered.sh
 herdr plugin action invoke sync --plugin dan.pane-topic-sync
 ```
 
@@ -164,7 +165,7 @@ maps).
 Tokens (stamped by this plugin; rendered by `examples/herdr-sidebar.toml`):
 
 1. `$space_header` — workspace label on its own line (first agent of a Space).
-2. `$kind_{claude|codex|grok|parked|other}` — brand glyph (`✳` / `●` / `Ø` / `▲` for Antigravity), brand color. `parked` (`‖`, grey) is a pane held by `herdr-lifecycle`; its `Parked: …` label is never renamed.
+2. `$kind_{claude|codex|grok|parked|other}` — brand glyph (`✳` / `●` / `Ø` / `▲` for Antigravity), brand color. `parked` (`‖`, grey) is a pane held by `herdr-lifecycle`; its `Parked: …` label is never renamed. Claude's glyph is `⁂` while the session leads an agent team with teammates (`~/.claude/teams/session-<sid8>/config.json` lists them); it changes on the next pane event.
 3. `$stat_{blocked|working|done|idle}` — lifecycle glyph (`?` / `:` / `✓` / `○`),
    status color.
 4. `$group_gap` — blank row after the last agent of each Space except the last.
