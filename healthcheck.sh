@@ -12,6 +12,13 @@
 # Warns (still exits 0) when the running server is older than the binary on
 # disk: the rebuilt binary is installed but `herdr server live-handoff` is pending.
 set -uo pipefail
+# Retired 2026-10-23 (T-7 audit 2026-10-23, F2): Rex replaced Herdr on 2026-10-21 and the
+# Herdr server was stopped on 2026-10-23. The plugin cannot run and the recorder it fed
+# (`recently-closed-tabs.jsonl`) has no reader since `resume-history` dropped it. The
+# checks below are kept for history and skipped; the repo is archived in place.
+echo "RETIRED: Herdr replaced by Rex 2026-10-21; plugin inactive, repo archived (T-7 2026-10-23 F2)"
+exit 0
+
 export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.bun/bin:/usr/bin:/bin"
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_ID="dan.pane-topic-sync"
